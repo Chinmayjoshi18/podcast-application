@@ -9,10 +9,9 @@ try {
   console.log('📦 Generating Prisma Client...');
   execSync('npx prisma generate', { stdio: 'inherit' });
   
-  // Optional: Run database migrations if needed
-  // Uncomment the following lines if you want to run migrations during deployment
-  // console.log('🛠️ Running database migrations...');
-  // execSync('npx prisma migrate deploy', { stdio: 'inherit' });
+  // Run database migrations
+  console.log('🛠️ Running database migrations...');
+  execSync('npx prisma migrate deploy', { stdio: 'inherit' });
   
   console.log('✅ Prisma setup complete!');
 } catch (error) {
