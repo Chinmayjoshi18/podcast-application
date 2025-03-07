@@ -6,8 +6,9 @@ import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
 import toast from 'react-hot-toast';
-import { FaMicrophone, FaUpload, FaStop, FaPlay, FaPause, FaTrash, FaSave, FaGlobe, FaLock, FaArrowLeft, FaImage } from 'react-icons/fa';
+import { FaMicrophone, FaUpload, FaStop, FaPlay, FaPause, FaTrash, FaSave, FaGlobe, FaLock, FaArrowLeft, FaImage, FaExclamationTriangle } from 'react-icons/fa';
 import { addPodcast } from '@/lib/storage';
+import { uploadAudioFile, getUploadProgress } from '@/lib/cloudStorage';
 
 // Import AudioRecorder dynamically with SSR disabled
 const ClientAudioRecorder = dynamic(
@@ -42,6 +43,8 @@ const RecordPage = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [charCount, setCharCount] = useState(0);
   const MAX_CHARS = 280; // Twitter-like character limit
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'processing' | 'error'>('idle');
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -204,24 +207,57 @@ const RecordPage = () => {
     }
 
     setIsSubmitting(true);
+    setUploadProgress(0);
 
     try {
-      // Process cover image if it exists
+      // Get the audio file (either recorded or uploaded)
+      const audioFile = selectedFile || new File([audioBlob!], `podcast_${Date.now()}.wav`, { 
+        type: audioBlob!.type 
+      });
+      
+      // Start processing the cover image if it exists
       let coverImageUrl = '';
+      let coverImageUploadPromise = Promise.resolve('');
+      
       if (coverImage) {
-        // In a real app, you would upload this to a storage service
-        const coverImageBase64 = await blobToBase64(coverImage);
-        coverImageUrl = coverImageBase64;
+        // Upload cover image and get URL
+        // Note: We're not showing detailed progress for image upload as it's generally smaller
+        coverImageUploadPromise = uploadAudioFile(
+          coverImage, 
+          'cover-images', 
+          `cover_${Date.now()}_${coverImage.name}`,
+          () => {} // No progress tracking for cover image
+        );
+      }
+      
+      // Upload the audio file with progress tracking
+      const audioFileUploadPromise = uploadAudioFile(
+        audioFile,
+        'podcast-audio',
+        `podcast_${Date.now()}_${audioFile.name}`,
+        (progress) => {
+          setUploadProgress(progress);
+        }
+      );
+      
+      // Wait for both uploads to complete
+      const [audioUrl, coverImageResult] = await Promise.all([
+        audioFileUploadPromise,
+        coverImageUploadPromise
+      ]);
+      
+      if (coverImageResult) {
+        coverImageUrl = coverImageResult;
       } else {
         // Use a placeholder image based on the first letter of the title
         coverImageUrl = `https://placehold.co/400x400/5f33e1/ffffff?text=${encodeURIComponent(formData.title.substring(0, 1).toUpperCase())}`;
       }
       
-      // Create a new podcast object
+      // Create podcast object with the URLs
       const newPodcast = {
         title: formData.title,
         description: formData.description,
-        audioUrl: audioBase64 as string,
+        audioUrl: audioUrl,
         coverImage: coverImageUrl,
         duration: audioRef.current?.duration || 0,
         isPublic: formData.isPublic,
@@ -233,16 +269,17 @@ const RecordPage = () => {
         }
       };
       
-      // Save the podcast to storage
+      // Save the podcast metadata to the database
       await addPodcast(newPodcast);
       
       toast.success('Podcast published successfully!');
       router.push('/dashboard');
     } catch (error) {
       console.error('Error uploading podcast:', error);
-      toast.error('Failed to publish podcast');
+      toast.error('Failed to publish podcast. Please try again.');
     } finally {
       setIsSubmitting(false);
+      setUploadProgress(0);
     }
   };
 
@@ -489,6 +526,24 @@ const RecordPage = () => {
             )}
           </div>
 
+          {/* Upload progress */}
+          {isSubmitting && (
+            <div className="mb-6">
+              <div className="flex justify-between items-center mb-1">
+                <span className="text-sm font-medium text-white">
+                  {uploadStatus === 'processing' ? 'Processing...' : 'Uploading...'}
+                </span>
+                <span className="text-sm font-medium text-white">{Math.round(uploadProgress)}%</span>
+              </div>
+              <div className="w-full bg-gray-700 rounded-full h-2.5">
+                <div 
+                  className="bg-primary-600 h-2.5 rounded-full transition-all duration-300" 
+                  style={{ width: `${uploadProgress}%` }}
+                ></div>
+              </div>
+            </div>
+          )}
+
           {/* Submit button */}
           <div className="mt-8">
             <button
@@ -500,8 +555,22 @@ const RecordPage = () => {
                   : 'bg-primary-600 text-white hover:bg-primary-700'
               }`}
             >
-              <FaSave className="mr-2" />
-              <span>{isSubmitting ? 'Publishing...' : 'Publish Podcast'}</span>
+              {isSubmitting ? (
+                <>
+                  <div className="animate-spin mr-2 h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
+                  <span>
+                    {uploadStatus === 'processing' 
+                      ? 'Processing podcast...' 
+                      : `Uploading... ${Math.round(uploadProgress)}%`
+                    }
+                  </span>
+                </>
+              ) : (
+                <>
+                  <FaSave className="mr-2" />
+                  <span>Publish Podcast</span>
+                </>
+              )}
             </button>
           </div>
         </form>
