@@ -279,7 +279,7 @@ const Home = () => {
   }
 
   if (status === 'unauthenticated') {
-    return (
+  return (
       <div className="min-h-screen flex flex-col md:flex-row w-full">
         {/* Left column - Full height image */}
         <div className="w-full md:w-1/2 relative min-h-[40vh] md:min-h-screen bg-gradient-to-br from-gray-900 to-primary-900">
@@ -314,7 +314,7 @@ const Home = () => {
                 <FaHeart className="text-4xl text-primary-500 mb-3" />
                 <h3 className="text-lg font-bold">Engage</h3>
                 <p className="text-sm text-gray-300">Like and comment</p>
-              </div>
+            </div>
               <div className="flex flex-col items-center">
                 <FaUserFriends className="text-4xl text-primary-500 mb-3" />
                 <h3 className="text-lg font-bold">Connect</h3>
@@ -345,7 +345,7 @@ const Home = () => {
                 className="w-full block text-center bg-transparent border border-primary-500 text-primary-500 hover:bg-primary-500/10 font-bold py-3 px-6 rounded-lg transition-colors"
               >
                 Sign up
-              </Link>
+          </Link>
             </div>
             
             <div className="border-t border-gray-700 pt-8 mt-4">
@@ -361,12 +361,12 @@ const Home = () => {
                         height={48}
                         className="object-cover"
                       />
-                    </div>
-                    <div>
+              </div>
+              <div>
                       <h4 className="font-medium line-clamp-1">{podcast.title}</h4>
                       <p className="text-gray-400 text-sm line-clamp-1">{podcast.user?.name || 'Unknown creator'}</p>
-                    </div>
-                  </div>
+              </div>
+                </div>
                 ))}
                 <button 
                   onClick={handleSignIn}
@@ -378,9 +378,9 @@ const Home = () => {
             </div>
           </div>
         </div>
-      </div>
-    );
-  }
+    </div>
+  );
+}
 
   return (
     <div className="divide-y divide-gray-800">
@@ -404,7 +404,7 @@ const Home = () => {
               Create your first podcast
             </Link>
           </p>
-        </div>
+    </div>
       )}
     </div>
   );

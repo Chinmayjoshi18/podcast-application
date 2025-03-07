@@ -15,10 +15,13 @@ import {
   FaEnvelope,
   FaBookmark,
   FaCog,
-  FaPlus
+  FaPlus,
+  FaSearch,
+  FaHeadphones
 } from 'react-icons/fa';
 import Image from 'next/image';
 import toast from 'react-hot-toast';
+import MessageNotificationBadge from './MessageNotificationBadge';
 
 const Sidebar = () => {
   const { data: session, status } = useSession();
@@ -42,12 +45,17 @@ const Sidebar = () => {
 
   const sidebarLinks = [
     { name: 'Home', href: '/', icon: <FaHome className="h-6 w-6" /> },
+    { name: 'Search', href: '/search', icon: <FaSearch className="h-6 w-6" /> },
+    { name: 'Messages', href: '/messages', icon: <FaEnvelope className="h-6 w-6" /> },
     { name: 'Explore', href: '/explore', icon: <FaCompass className="h-6 w-6" /> },
+    { name: 'Saved', href: '/saved', icon: <FaBookmark className="h-6 w-6" /> },
+    { name: 'Profile', href: '/profile', icon: <FaUser className="h-6 w-6" /> },
+    { name: 'Create', href: '/create', icon: <FaPlus className="h-6 w-6" /> },
+    { name: 'Listen', href: '/player', icon: <FaHeadphones className="h-6 w-6" /> },
+    { name: 'Record', href: '/record', icon: <FaMicrophone className="h-6 w-6" />, count: notificationCount },
     ...(isLoggedIn
       ? [
           { name: 'Notifications', href: '/notifications', icon: <FaBell className="h-6 w-6" />, count: notificationCount },
-          { name: 'Messages', href: '/messages', icon: <FaEnvelope className="h-6 w-6" /> },
-          { name: 'Bookmarks', href: '/bookmarks', icon: <FaBookmark className="h-6 w-6" /> },
           { name: 'Topics', href: '/topics', icon: <FaHashtag className="h-6 w-6" /> },
           { name: 'Dashboard', href: '/dashboard', icon: <FaUser className="h-6 w-6" /> },
           { name: 'Settings', href: '/settings', icon: <FaCog className="h-6 w-6" /> },
@@ -69,20 +77,25 @@ const Sidebar = () => {
         <nav className="mb-6">
           <ul className="space-y-1">
             {sidebarLinks.map((link) => (
-              <li key={link.name}>
+              <li key={link.name} className="mb-2">
                 <Link
                   href={link.href}
-                  className={`flex items-center px-3 py-3 rounded-full transition-colors hover:bg-gray-800 ${
-                    pathname === link.href ? 'font-bold' : ''
-                  }`}
+                  className={`flex items-center p-3 rounded-lg ${
+                    pathname === link.href
+                      ? 'bg-gray-800 text-white'
+                      : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                  } transition-colors`}
                 >
-                  <div className="flex-shrink-0">{link.icon}</div>
-                  <span className="ml-4 text-xl hidden xl:block">{link.name}</span>
-                  {link.count && link.count > 0 && (
-                    <div className="ml-auto xl:ml-2 bg-primary-500 rounded-full w-5 h-5 flex items-center justify-center text-xs">
-                      {link.count}
-                    </div>
-                  )}
+                  <div className="relative">
+                    {link.icon}
+                    {link.name === 'Messages' && <MessageNotificationBadge />}
+                    {link.count && link.count > 0 && link.name !== 'Messages' && (
+                      <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                        {link.count > 9 ? '9+' : link.count}
+                      </span>
+                    )}
+                  </div>
+                  <span className="ml-4">{link.name}</span>
                 </Link>
               </li>
             ))}
