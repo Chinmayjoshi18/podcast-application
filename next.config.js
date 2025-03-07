@@ -26,10 +26,9 @@ const nextConfig = {
   },
   webpack: (config) => {
     config.resolve.fallback = { fs: false, net: false, tls: false };
+    // Add native Node.js modules support
+    config.externals.push('bcrypt');
     return config;
-  },
-  experimental: {
-    serverExternalPackages: ['bcrypt'],
   }
 };
 
