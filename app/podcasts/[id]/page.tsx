@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { FaPlay, FaPause, FaHeart, FaRegHeart, FaComment, FaShareAlt, FaArrowLeft, FaPaperPlane } from 'react-icons/fa';
+import { FaPlay, FaPause, FaHeart, FaRegHeart, FaComment, FaShareAlt, FaArrowLeft, FaPaperPlane, FaEdit, FaSave, FaTimes } from 'react-icons/fa';
 import toast from 'react-hot-toast';
 import { Podcast, getAllPodcasts, updatePodcast } from '@/lib/storage';
 
@@ -19,6 +19,11 @@ const PodcastDetailPage = () => {
   const [isLiked, setIsLiked] = useState(false);
   const [comment, setComment] = useState('');
   const [comments, setComments] = useState<Array<{id: string, user: {name: string, image?: string}, text: string, createdAt: string}>>([]);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState({
+    title: '',
+    description: ''
+  });
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
@@ -33,6 +38,11 @@ const PodcastDetailPage = () => {
         
         if (foundPodcast) {
           setPodcast(foundPodcast);
+          // Initialize edit form with current values
+          setEditForm({
+            title: foundPodcast.title,
+            description: foundPodcast.description
+          });
           
           // Check if user has liked this podcast
           if (status === 'authenticated' && session?.user) {
@@ -50,37 +60,102 @@ const PodcastDetailPage = () => {
             }
           }
           
-          // Load mock comments
-          const mockComments = [
-            {
-              id: '1',
-              user: { name: 'Alex Johnson', image: 'https://placehold.co/100/55f/fff?text=AJ' },
-              text: 'This episode was amazing! I learned so much about this topic.',
-              createdAt: new Date(Date.now() - 3600000).toISOString() // 1 hour ago
-            },
-            {
-              id: '2',
-              user: { name: 'Sarah Williams', image: 'https://placehold.co/100/5f5/fff?text=SW' },
-              text: 'Great insights! Would love to hear more about the practical applications in a future episode.',
-              createdAt: new Date(Date.now() - 86400000).toISOString() // 1 day ago
-            }
-          ];
-          setComments(mockComments);
+          // Fetch comments
+          fetchComments(podcastId);
         } else {
-          toast.error('Podcast not found');
+          toast.error("Podcast not found");
           router.push('/');
         }
       } catch (error) {
-        console.error("Error fetching podcast:", error);
-        toast.error("Failed to load podcast details");
-        router.push('/');
+        console.error("Error loading podcast:", error);
+        toast.error("Failed to load podcast");
       } finally {
         setIsLoading(false);
       }
     };
     
+    // Fetch comments for the podcast
+    const fetchComments = async (podcastId: string) => {
+      try {
+        const response = await fetch(`/api/podcasts/${podcastId}/comments`);
+        if (response.ok) {
+          const data = await response.json();
+          setComments(data);
+        } else {
+          // If API fails, use empty comments array
+          setComments([]);
+        }
+      } catch (error) {
+        console.error("Error fetching comments:", error);
+        // Use empty array as fallback
+        setComments([]);
+      }
+    };
+    
     fetchPodcast();
-  }, [params.id, session, status, router]);
+  }, [params.id, router, session, status]);
+
+  // Handle input change for edit form
+  const handleEditChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setEditForm({
+      ...editForm,
+      [name]: value
+    });
+  };
+
+  // Save podcast edits
+  const handleSaveEdit = async () => {
+    if (!podcast) return;
+    
+    try {
+      // Validate inputs
+      if (!editForm.title.trim()) {
+        toast.error("Title cannot be empty");
+        return;
+      }
+      
+      // Update podcast in the database
+      const updatedPodcast = await updatePodcast(podcast.id, {
+        title: editForm.title,
+        description: editForm.description
+      });
+      
+      // Update local state
+      setPodcast({
+        ...podcast,
+        title: editForm.title,
+        description: editForm.description
+      });
+      
+      // Exit editing mode
+      setIsEditing(false);
+      toast.success("Podcast updated successfully");
+    } catch (error) {
+      console.error("Error updating podcast:", error);
+      toast.error("Failed to update podcast");
+    }
+  };
+
+  // Cancel editing
+  const handleCancelEdit = () => {
+    if (podcast) {
+      // Reset form to original values
+      setEditForm({
+        title: podcast.title,
+        description: podcast.description
+      });
+    }
+    setIsEditing(false);
+  };
+
+  // Check if current user is the podcast owner
+  const isOwner = () => {
+    if (!podcast || !session?.user) return false;
+    
+    const userId = (session.user as any)?.id;
+    return userId === podcast.userId;
+  };
 
   const togglePlay = () => {
     if (!podcast) return;
@@ -298,7 +373,63 @@ const PodcastDetailPage = () => {
           
           {/* Podcast details */}
           <div className="flex-1">
-            <h2 className="text-2xl font-bold mb-2">{podcast.title}</h2>
+            {isEditing ? (
+              <div className="border border-gray-600 rounded-lg p-4 mb-4">
+                <h3 className="font-medium mb-2">Edit Podcast</h3>
+                <div className="mb-4">
+                  <label className="block text-sm text-gray-400 mb-1">Title</label>
+                  <input
+                    type="text"
+                    name="title"
+                    value={editForm.title}
+                    onChange={handleEditChange}
+                    className="w-full bg-gray-800 border border-gray-700 rounded-lg p-2 text-white"
+                    placeholder="Podcast title"
+                  />
+                </div>
+                <div className="mb-4">
+                  <label className="block text-sm text-gray-400 mb-1">Description</label>
+                  <textarea
+                    name="description"
+                    value={editForm.description}
+                    onChange={handleEditChange}
+                    className="w-full bg-gray-800 border border-gray-700 rounded-lg p-2 text-white h-24"
+                    placeholder="Podcast description"
+                  />
+                </div>
+                <div className="flex space-x-2">
+                  <button 
+                    onClick={handleSaveEdit}
+                    className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg flex items-center"
+                  >
+                    <FaSave className="mr-2" /> Save
+                  </button>
+                  <button 
+                    onClick={handleCancelEdit}
+                    className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg flex items-center"
+                  >
+                    <FaTimes className="mr-2" /> Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex justify-between items-start">
+                <div>
+                  <h2 className="text-2xl font-bold mb-1">{podcast.title}</h2>
+                  <p className="text-gray-400 text-sm">{podcast.description}</p>
+                </div>
+                {isOwner() && (
+                  <button 
+                    onClick={() => setIsEditing(true)} 
+                    className="bg-gray-800 hover:bg-gray-700 p-2 rounded-full"
+                    aria-label="Edit podcast"
+                  >
+                    <FaEdit />
+                  </button>
+                )}
+              </div>
+            )}
+            
             <Link href={`/profile/${podcast.user.id}`} className="text-gray-300 hover:underline inline-flex items-center gap-2 mb-4">
               <div className="w-5 h-5 relative rounded-full overflow-hidden">
                 <Image
@@ -319,45 +450,43 @@ const PodcastDetailPage = () => {
               <span>•</span>
               <span>{podcast.listens || 0} listens</span>
             </div>
-            
-            <p className="text-gray-300 mb-6">{podcast.description}</p>
-            
-            {/* Action buttons */}
-            <div className="flex space-x-4">
-              <button
-                onClick={togglePlay}
-                className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-full flex items-center space-x-2 transition-colors"
-              >
-                {isPlaying ? (
-                  <>
-                    <FaPause className="mr-2" /> Pause
-                  </>
-                ) : (
-                  <>
-                    <FaPlay className="mr-2" /> Play
-                  </>
-                )}
-              </button>
-              
-              <button
-                onClick={toggleLike}
-                className={`${isLiked ? 'text-primary-600' : 'text-gray-400'} hover:text-primary-600 px-3 py-2 rounded-full flex items-center transition-colors`}
-                aria-label={isLiked ? 'Unlike' : 'Like'}
-              >
-                {isLiked ? <FaHeart className="mr-2" /> : <FaRegHeart className="mr-2" />}
-                <span>{podcast.likes || 0}</span>
-              </button>
-              
-              <button
-                onClick={handleShare}
-                className="text-gray-400 hover:text-primary-600 px-3 py-2 rounded-full flex items-center transition-colors"
-                aria-label="Share"
-              >
-                <FaShareAlt className="mr-2" />
-                <span>Share</span>
-              </button>
-            </div>
           </div>
+        </div>
+        
+        {/* Action buttons */}
+        <div className="flex space-x-4 mt-6">
+          <button
+            onClick={togglePlay}
+            className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-full flex items-center space-x-2 transition-colors"
+          >
+            {isPlaying ? (
+              <>
+                <FaPause className="mr-2" /> Pause
+              </>
+            ) : (
+              <>
+                <FaPlay className="mr-2" /> Play
+              </>
+            )}
+          </button>
+          
+          <button
+            onClick={toggleLike}
+            className={`${isLiked ? 'text-primary-600' : 'text-gray-400'} hover:text-primary-600 px-3 py-2 rounded-full flex items-center transition-colors`}
+            aria-label={isLiked ? 'Unlike' : 'Like'}
+          >
+            {isLiked ? <FaHeart className="mr-2" /> : <FaRegHeart className="mr-2" />}
+            <span>{podcast.likes || 0}</span>
+          </button>
+          
+          <button
+            onClick={handleShare}
+            className="text-gray-400 hover:text-primary-600 px-3 py-2 rounded-full flex items-center transition-colors"
+            aria-label="Share"
+          >
+            <FaShareAlt className="mr-2" />
+            <span>Share</span>
+          </button>
         </div>
         
         {/* Comments section */}
