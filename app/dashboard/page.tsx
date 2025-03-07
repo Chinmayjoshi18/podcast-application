@@ -118,14 +118,19 @@ const EditProfileModal = ({ isOpen, onClose, onSave, initialData }: EditProfileM
     }
   };
   
-  // Clean up object URLs on unmount
+  // Clean up object URLs on unmount or when previews change
   useEffect(() => {
+    // Store the current URLs for cleanup
+    const currentProfilePreview = profileImagePreview; 
+    const currentCoverPreview = coverImagePreview;
+    
     return () => {
-      if (typeof profileImagePreview === 'string' && profileImagePreview.startsWith('blob:')) {
-        URL.revokeObjectURL(profileImagePreview);
+      // Only clean blob URLs that we've created (they'll start with "blob:")
+      if (typeof currentProfilePreview === 'string' && currentProfilePreview.startsWith('blob:')) {
+        URL.revokeObjectURL(currentProfilePreview);
       }
-      if (typeof coverImagePreview === 'string' && coverImagePreview.startsWith('blob:')) {
-        URL.revokeObjectURL(coverImagePreview);
+      if (typeof currentCoverPreview === 'string' && currentCoverPreview.startsWith('blob:')) {
+        URL.revokeObjectURL(currentCoverPreview);
       }
     };
   }, [profileImagePreview, coverImagePreview]);
@@ -302,18 +307,20 @@ const EditProfileModal = ({ isOpen, onClose, onSave, initialData }: EditProfileM
 };
 
 const Dashboard = () => {
-  const { data: session, status, update } = useSession();
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState('overview');
+  const { data: session, status, update } = useSession();
+  const [podcasts, setPodcasts] = useState<Podcast[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isEditProfileModalOpen, setIsEditProfileModalOpen] = useState(false);
+  const [dataFetched, setDataFetched] = useState(false);
+  const [activeTab, setActiveTab] = useState('overview');
   const [stats, setStats] = useState({
     totalPodcasts: 0,
     totalListens: 0,
     totalFollowers: 0,
     totalLikes: 0,
   });
-  const [podcasts, setPodcasts] = useState<Podcast[]>([]);
-  const [isEditProfileModalOpen, setIsEditProfileModalOpen] = useState(false);
+  
   const [profile, setProfile] = useState({
     name: '',
     username: '',
@@ -329,10 +336,23 @@ const Dashboard = () => {
     } else if (status === 'authenticated' && session.user) {
       const userId = session.user.id;
       
-      // Load user's podcasts from storage
+      // Initialize profile data only once when session is available
+      if (!profile.name && session.user.name) {
+        setProfile({
+          ...profile,
+          name: session.user.name || 'User',
+          username: (session.user.email || 'user@example.com').split('@')[0],
+          profileImage: session.user.image || 'https://placehold.co/400x400/5f33e1/ffffff?text=U'
+        });
+      }
+      
+      // Load podcasts if we haven't fetched data before
       const loadPodcasts = async () => {
         try {
-          setIsLoading(true);
+          if (!dataFetched) {
+            setIsLoading(true);
+          }
+          
           const userPodcasts = await getUserPodcasts(userId);
           
           // Set state with real metrics
@@ -344,14 +364,6 @@ const Dashboard = () => {
             totalListens: userPodcasts.reduce((sum, podcast) => sum + (podcast.listens || 0), 0),
             totalLikes: userPodcasts.reduce((sum, podcast) => sum + (podcast.likes || 0), 0),
             totalFollowers: 0, // This will be updated with real data when we fetch followers
-          });
-          
-          // Initialize profile data
-          setProfile({
-            ...profile,
-            name: session.user.name || 'User',
-            username: (session.user.email || 'user@example.com').split('@')[0],
-            profileImage: session.user.image || 'https://placehold.co/400x400/5f33e1/ffffff?text=U'
           });
           
           // Fetch follower count from API (in a real implementation)
@@ -371,9 +383,13 @@ const Dashboard = () => {
           };
           
           fetchFollowerCount();
+          setDataFetched(true);
         } catch (error) {
           console.error('Failed to load podcasts:', error);
-          toast.error('Failed to load podcasts. Please try again later.');
+          if (!dataFetched) {
+            // Only show error toast on first load
+            toast.error('Failed to load podcasts. Please try again later.');
+          }
           setPodcasts([]);
         } finally {
           setIsLoading(false);
@@ -382,36 +398,44 @@ const Dashboard = () => {
       
       loadPodcasts();
     }
-  }, [status, session, router, profile]);
+  }, [status, session, router, dataFetched, profile.name]);
 
   // Handle profile save
   const handleSaveProfile = async (data: EditProfileFormData) => {
     try {
       // In a real app, you would upload the images and update the user profile in the database
       
-      // Update the local state with the new data
-      setProfile({
+      // Process new image files if they've changed
+      const newProfileImage = typeof data.profileImage === 'string' 
+        ? data.profileImage 
+        : URL.createObjectURL(data.profileImage as File);
+        
+      const newCoverImage = typeof data.coverImage === 'string'
+        ? data.coverImage
+        : URL.createObjectURL(data.coverImage as File);
+      
+      // Store updated profile data
+      const updatedProfile = {
         name: data.name,
         username: data.username,
         bio: data.bio,
         website: data.website,
-        profileImage: typeof data.profileImage === 'string' 
-          ? data.profileImage 
-          : URL.createObjectURL(data.profileImage as File),
-        coverImage: typeof data.coverImage === 'string'
-          ? data.coverImage
-          : URL.createObjectURL(data.coverImage as File)
-      });
+        profileImage: newProfileImage,
+        coverImage: newCoverImage
+      };
       
-      // Also update the session to reflect changes
+      // Update session first
       await update({
         ...session,
         user: {
           ...session?.user,
           name: data.name,
-          image: typeof data.profileImage === 'string' ? data.profileImage : URL.createObjectURL(data.profileImage as File)
+          image: newProfileImage
         }
       });
+      
+      // Then update local state once session update is complete
+      setProfile(updatedProfile);
       
       toast.success('Profile updated successfully');
     } catch (error) {
