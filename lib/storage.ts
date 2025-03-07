@@ -12,6 +12,7 @@ export interface Podcast {
   updatedAt?: string;
   listens?: number;
   likes?: number;
+  comments?: number;
   isPublic: boolean;
   userId: string;
   user: {
@@ -19,6 +20,7 @@ export interface Podcast {
     name: string;
     image?: string;
   };
+  tags?: { id: string; name: string }[];
 }
 
 // These functions can be used client-side to make fetch requests to the API

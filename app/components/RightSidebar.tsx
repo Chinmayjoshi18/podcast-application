@@ -7,38 +7,48 @@ import { FaSearch, FaUserPlus } from 'react-icons/fa';
 import { getPublicPodcasts, getPublicPodcastsSync, Podcast } from '@/lib/storage';
 import { useToast } from '@/app/context/ToastContext';
 import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
+
+// User interface
+interface User {
+  id: string;
+  name: string | null;
+  username?: string;
+  email: string | null;
+  image: string | null;
+  followers?: number;
+  isFollowing?: boolean;
+}
 
 const RightSidebar = () => {
+  const { data: session } = useSession();
   const [trendingPodcasts, setTrendingPodcasts] = useState<Podcast[]>([]);
+  const [suggestedUsers, setSuggestedUsers] = useState<User[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const { showToast } = useToast();
   const router = useRouter();
 
-  // Mock suggested users data
-  const suggestedUsers = [
-    {
-      id: 'user1',
-      name: 'Alex Johnson',
-      username: 'alexjohnson',
-      image: 'https://placehold.co/100/55f/fff?text=AJ',
-      followers: 3542,
-    },
-    {
-      id: 'user2',
-      name: 'Sarah Williams',
-      username: 'sarahwilliams',
-      image: 'https://placehold.co/100/5f5/fff?text=SW',
-      followers: 2891,
-    },
-    {
-      id: 'user3',
-      name: 'Michael Chen',
-      username: 'michaelchen',
-      image: 'https://placehold.co/100/f55/fff?text=MC',
-      followers: 4218,
-    },
-  ];
+  // Fetch suggested users from the database
+  useEffect(() => {
+    const fetchSuggestedUsers = async () => {
+      try {
+        if (!session?.user?.id) return;
+        
+        const response = await fetch(`/api/users/suggestions?limit=3`);
+        if (response.ok) {
+          const users = await response.json();
+          setSuggestedUsers(users);
+        } else {
+          console.error('Failed to fetch suggested users');
+        }
+      } catch (error) {
+        console.error('Error fetching suggested users:', error);
+      }
+    };
+    
+    fetchSuggestedUsers();
+  }, [session?.user?.id]);
 
   useEffect(() => {
     // Try to use the async API first, with a fallback to sync
@@ -91,6 +101,39 @@ const RightSidebar = () => {
       return `${(num / 1000).toFixed(1)}K`;
     }
     return num.toString();
+  };
+
+  // Function to follow a user
+  const handleFollow = async (userId: string) => {
+    if (!session?.user) {
+      showToast('Please sign in to follow users', 'error');
+      return;
+    }
+    
+    try {
+      const response = await fetch(`/api/users/${userId}/follow`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        // Update the local state
+        setSuggestedUsers(suggestedUsers.map(user => 
+          user.id === userId 
+            ? { ...user, isFollowing: true, followers: (user.followers || 0) + 1 } 
+            : user
+        ));
+        
+        showToast('You are now following this user', 'success');
+      } else {
+        showToast('Failed to follow user', 'error');
+      }
+    } catch (error) {
+      console.error('Error following user:', error);
+      showToast('Failed to follow user', 'error');
+    }
   };
 
   return (
@@ -167,20 +210,24 @@ const RightSidebar = () => {
               <div className="flex items-center">
                 <div className="w-10 h-10 relative rounded-full overflow-hidden mr-3">
                   <Image
-                    src={user.image}
-                    alt={user.name}
+                    src={user.image || 'https://placehold.co/100/5f33e1/ffffff?text=U'}
+                    alt={user.name || 'User'}
                     width={40}
                     height={40}
                     className="object-cover"
                   />
                 </div>
                 <div>
-                  <h4 className="font-medium text-white">{user.name}</h4>
+                  <h4 className="font-medium text-white">{user.name || 'Unknown User'}</h4>
                   <p className="text-gray-400 text-sm">@{user.username}</p>
                 </div>
               </div>
-              <button className="bg-white text-black rounded-full px-3 py-1 text-sm font-bold hover:bg-gray-200 transition-colors">
-                Follow
+              <button
+                className={`bg-white text-black rounded-full px-3 py-1 text-sm font-bold hover:bg-gray-200 transition-colors ${user.isFollowing ? 'opacity-50 cursor-not-allowed' : ''}`}
+                onClick={() => user.isFollowing ? null : handleFollow(user.id)}
+                disabled={user.isFollowing}
+              >
+                {user.isFollowing ? 'Following' : 'Follow'}
               </button>
             </div>
           ))}

@@ -26,6 +26,23 @@ const generateRandomUsername = (name: string | null | undefined) => {
   return `${baseUsername}_${randomStr}`;
 };
 
+// Function to create a welcome notification for new users
+const createWelcomeNotification = async (userId: string) => {
+  try {
+    await prisma.notification.create({
+      data: {
+        type: 'welcome',
+        content: 'Welcome to PodcastApp! Your account has been created successfully.',
+        userId: userId,
+        isRead: false,
+      },
+    });
+    console.log('Welcome notification created for user:', userId);
+  } catch (error) {
+    console.error('Error creating welcome notification:', error);
+  }
+};
+
 export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma) as Adapter,
   providers: [
@@ -94,6 +111,11 @@ export const authOptions: NextAuthOptions = {
                 name: user.name || username
               }
             });
+            
+            // For new users, create a welcome notification
+            if (user.id) {
+              await createWelcomeNotification(user.id);
+            }
           }
         } catch (error) {
           console.error("Error in sign in callback:", error);
@@ -158,6 +180,9 @@ export const authOptions: NextAuthOptions = {
             }
           });
         }
+        
+        // Create welcome notification for new user
+        await createWelcomeNotification(user.id);
       } catch (error) {
         console.error("Error in createUser event:", error);
       }

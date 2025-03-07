@@ -9,6 +9,25 @@ import { FaMicrophone, FaPodcast, FaUserFriends, FaChartLine, FaPlus, FaGlobe, F
 import { toast } from 'react-hot-toast';
 import { getUserPodcasts, updatePodcast, deletePodcast, Podcast } from '@/lib/storage';
 
+// Dashboard stat card
+interface StatCardProps {
+  label: string;
+  count: number;
+  icon: JSX.Element;
+}
+
+const StatCard = ({ label, count, icon }: StatCardProps) => (
+  <div className="bg-gray-800 rounded-lg p-4 flex items-center space-x-4">
+    <div className="bg-primary-600 p-3 rounded-md">
+      {icon}
+    </div>
+    <div>
+      <p className="text-gray-400 text-sm">{label}</p>
+      <p className="text-2xl font-bold">{count}</p>
+    </div>
+  </div>
+);
+
 const Dashboard = () => {
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -43,14 +62,34 @@ const Dashboard = () => {
           setIsLoading(true);
           const userPodcasts = await getUserPodcasts(userId);
           
-          // Set state
+          // Set state with real metrics
           setPodcasts(userPodcasts);
+          
+          // Calculate real metrics from podcast data
           setStats({
             totalPodcasts: userPodcasts.length,
             totalListens: userPodcasts.reduce((sum, podcast) => sum + (podcast.listens || 0), 0),
-            totalFollowers: 28, // Mock data
             totalLikes: userPodcasts.reduce((sum, podcast) => sum + (podcast.likes || 0), 0),
+            totalFollowers: 0, // This will be updated with real data when we fetch followers
           });
+          
+          // Fetch follower count from API (in a real implementation)
+          const fetchFollowerCount = async () => {
+            try {
+              const response = await fetch(`/api/users/${userId}/followers/count`);
+              if (response.ok) {
+                const data = await response.json();
+                setStats(prev => ({
+                  ...prev,
+                  totalFollowers: data.count
+                }));
+              }
+            } catch (error) {
+              console.error('Failed to fetch follower count:', error);
+            }
+          };
+          
+          fetchFollowerCount();
         } catch (error) {
           console.error('Failed to load podcasts:', error);
           toast.error('Failed to load podcasts. Please try again later.');

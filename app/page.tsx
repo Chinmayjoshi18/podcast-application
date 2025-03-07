@@ -9,6 +9,7 @@ import toast from 'react-hot-toast';
 import Link from 'next/link';
 import { useToast } from './context/ToastContext';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 
 // Generate sample podcast data
 const generateSamplePodcasts = (count: number): Podcast[] => {
@@ -84,7 +85,8 @@ const generateSamplePodcasts = (count: number): Podcast[] => {
   });
 };
 
-export default function Home() {
+const Home = () => {
+  const router = useRouter();
   const { data: session, status } = useSession();
   const [podcasts, setPodcasts] = useState<Podcast[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -95,46 +97,31 @@ export default function Home() {
   const { showToast } = useToast();
 
   useEffect(() => {
-    // Load the podcasts from storage or generate sample data
+    // Load the podcasts from the database
     const loadPodcasts = async () => {
       try {
-        // Try to get podcasts from the API
+        // Get podcasts from the API
         const publicPodcasts = await getPublicPodcasts();
         
-        // If there are fewer than 5 podcasts, add sample data
-        let allPodcasts: Podcast[] = [];
-        
-        if (Array.isArray(publicPodcasts) && publicPodcasts.length >= 5) {
-          allPodcasts = publicPodcasts;
-        } else {
-          // Try the sync method as fallback
-          const syncPodcasts = getPublicPodcastsSync();
-          allPodcasts = (syncPodcasts.length >= 5) 
-            ? syncPodcasts
-            : [...syncPodcasts, ...generateSamplePodcasts(30)];
-        }
-        
         // Sort by newest first
-        allPodcasts.sort((a, b) => {
+        publicPodcasts.sort((a, b) => {
           const dateA = new Date(a.createdAt).getTime();
           const dateB = new Date(b.createdAt).getTime();
           return dateB - dateA;
         });
         
-        setPodcasts(allPodcasts);
+        setPodcasts(publicPodcasts);
         
-        // Initialize comment counts (in a real app, this would come from the API)
+        // Use the real comment counts from the API
         const initialCommentCounts: Record<string, number> = {};
-        allPodcasts.forEach(podcast => {
-          initialCommentCounts[podcast.id] = Math.floor(Math.random() * 25); // Mock comment counts (0-25)
+        publicPodcasts.forEach(podcast => {
+          initialCommentCounts[podcast.id] = podcast.comments || 0;
         });
         setCommentCounts(initialCommentCounts);
       } catch (error) {
         console.error("Error loading podcasts:", error);
         showToast("Failed to load podcasts", "error");
-        // Load sample data as a fallback
-        const samplePodcasts = generateSamplePodcasts(30);
-        setPodcasts(samplePodcasts);
+        setPodcasts([]);
       } finally {
         setIsLoading(false);
       }
@@ -422,3 +409,5 @@ export default function Home() {
     </div>
   );
 }
+
+export default Home;
