@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth/next';
+import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { v2 as cloudinary } from 'cloudinary';
 
@@ -10,12 +10,11 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// Increase body size limit specifically for this route to handle large files
+// This configuration disables the default body parser for this route
+// allowing us to handle large files directly
 export const config = {
   api: {
-    bodyParser: {
-      sizeLimit: '100mb', // Set limit to 100MB
-    },
+    bodyParser: false,
   },
 };
 
@@ -32,44 +31,68 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData();
     const file = formData.get('file') as File;
     
-    // Validate resource type - must be one of auto/image/video/raw
-    const resourceTypeInput = formData.get('resourceType') as string || 'auto';
-    const resourceType = (['auto', 'image', 'video', 'raw'].includes(resourceTypeInput)) 
-      ? resourceTypeInput as 'auto' | 'image' | 'video' | 'raw'
-      : 'auto';
-      
-    const uploadPreset = formData.get('uploadPreset') as string || 'podcast_uploads';
+    // Get additional parameters
+    const fileType = formData.get('fileType') as string || 'auto';
+    const folder = formData.get('folder') as string || 'podcasts';
+    const isAudio = fileType === 'audio';
 
     if (!file) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
 
-    // Convert file to buffer for Cloudinary
+    console.log(`Starting upload of ${file.name} (${file.size} bytes) as ${fileType}`);
+
+    // Convert file to base64 for reliable uploading
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
+    const base64File = buffer.toString('base64');
+    const base64FileData = `data:${file.type};base64,${base64File}`;
+
+    // Configure upload parameters
+    const uploadOptions: any = {
+      folder: folder,
+      resource_type: isAudio ? 'video' : 'auto', // Cloudinary uses 'video' type for audio files
+      use_filename: true,
+      unique_filename: true,
+    };
+
+    // For audio files add additional options
+    if (isAudio) {
+      uploadOptions.audio_codec = 'aac';
+      uploadOptions.bit_rate = '128k';
+      uploadOptions.overwrite = true;
+    }
 
     // Upload to Cloudinary
     const result = await new Promise((resolve, reject) => {
-      const uploadStream = cloudinary.uploader.upload_stream(
-        {
-          resource_type: resourceType,
-          upload_preset: uploadPreset,
-          chunk_size: 6000000, // 6MB chunks
-        },
+      cloudinary.uploader.upload(
+        base64FileData,
+        uploadOptions,
         (error, result) => {
-          if (error) reject(error);
-          else resolve(result);
+          if (error) {
+            console.error('Cloudinary upload error:', error);
+            reject(error);
+          } else {
+            console.log('Upload successful:', result?.public_id);
+            resolve(result);
+          }
         }
       );
-
-      // Upload the buffer to Cloudinary through the stream
-      uploadStream.end(buffer);
     });
 
-    // Return the upload result
-    return NextResponse.json(result);
+    // Return the upload result with specific fields
+    return NextResponse.json({
+      success: true,
+      url: (result as any).secure_url,
+      publicId: (result as any).public_id,
+      ...(isAudio && { duration: (result as any).duration })
+    });
   } catch (error) {
     console.error('Error uploading file:', error);
-    return NextResponse.json({ error: 'File upload failed' }, { status: 500 });
+    return NextResponse.json({ 
+      success: false,
+      error: 'File upload failed',
+      details: (error as Error).message 
+    }, { status: 500 });
   }
 } 
