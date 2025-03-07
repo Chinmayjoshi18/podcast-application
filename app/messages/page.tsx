@@ -5,7 +5,7 @@ import { useSession } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
-import { FaArrowLeft, FaPaperPlane, FaInbox } from 'react-icons/fa';
+import { FaArrowLeft, FaPaperPlane, FaInbox, FaSearch } from 'react-icons/fa';
 import toast from 'react-hot-toast';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -46,6 +46,7 @@ const MessagesPage = () => {
   const [newMessage, setNewMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [sendingMessage, setSendingMessage] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   
@@ -228,8 +229,15 @@ const MessagesPage = () => {
     return formatDistanceToNow(new Date(dateString), { addSuffix: true });
   };
   
+  // Filter conversations based on search term
+  const filteredConversations = conversations.filter(conversation => {
+    const otherUser = getOtherParticipant(conversation);
+    return otherUser.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+           conversation.messages[0]?.content.toLowerCase().includes(searchTerm.toLowerCase());
+  });
+  
   return (
-    <div className="flex flex-col h-screen">
+    <div className="w-full flex-grow flex flex-col">
       {/* Header */}
       <div className="sticky top-0 z-10 bg-gray-900 p-4 border-b border-gray-800 flex items-center">
         <Link href="/" className="mr-4">
@@ -240,12 +248,24 @@ const MessagesPage = () => {
         </h1>
       </div>
       
-      {/* Main content - Split view */}
+      {/* Main content - Full width layout */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Conversations list - Left sidebar */}
-        <div className={`w-full md:w-1/3 border-r border-gray-800 flex flex-col ${activeConversation ? 'hidden md:flex' : 'flex'}`}>
+        {/* Conversations list - Left side */}
+        <div className={`w-1/3 border-r border-gray-800 flex flex-col ${activeConversation ? 'hidden md:flex' : 'flex'}`}>
           <div className="p-4 border-b border-gray-800">
             <h2 className="text-lg font-semibold">Recent Conversations</h2>
+            
+            {/* Search conversations */}
+            <div className="mt-2 relative">
+              <input
+                type="text"
+                placeholder="Search conversations"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full bg-gray-800 rounded-full py-2 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary-600"
+              />
+              <FaSearch className="absolute left-3 top-2.5 text-gray-500" />
+            </div>
           </div>
           
           <div className="flex-1 overflow-y-auto">
@@ -261,9 +281,16 @@ const MessagesPage = () => {
                   Start a conversation by visiting a user's profile and clicking "Message"
                 </p>
               </div>
+            ) : filteredConversations.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full p-4 text-center">
+                <p className="text-gray-400">No matching conversations</p>
+                <p className="text-sm text-gray-500 mt-2">
+                  Try a different search term
+                </p>
+              </div>
             ) : (
               <div className="divide-y divide-gray-800">
-                {conversations.map(conversation => {
+                {filteredConversations.map(conversation => {
                   const otherUser = getOtherParticipant(conversation);
                   const lastMessage = conversation.messages[0];
                   
@@ -315,8 +342,8 @@ const MessagesPage = () => {
           </div>
         </div>
         
-        {/* Conversation - Right panel */}
-        <div className={`w-full md:w-2/3 flex flex-col ${!activeConversation ? 'hidden md:flex' : 'flex'}`}>
+        {/* Conversation - Right side */}
+        <div className={`w-2/3 flex flex-col ${!activeConversation ? 'hidden md:flex' : 'flex'}`}>
           {activeConversation ? (
             <>
               {/* Conversation header */}
@@ -345,7 +372,7 @@ const MessagesPage = () => {
               </div>
               
               {/* Messages */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-950">
                 {messages.map(message => {
                   const isOwnMessage = message.senderId === session?.user?.id;
                   
