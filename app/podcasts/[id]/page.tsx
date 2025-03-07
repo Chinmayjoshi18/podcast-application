@@ -25,50 +25,61 @@ const PodcastDetailPage = () => {
     const podcastId = params.id as string;
     
     // Get podcast from storage
-    const allPodcasts = getAllPodcasts();
-    const foundPodcast = allPodcasts.find(p => p.id === podcastId);
-    
-    if (foundPodcast) {
-      setPodcast(foundPodcast);
-      
-      // Check if user has liked this podcast
-      if (status === 'authenticated' && session?.user) {
-        const userId = (session.user as any)?.id;
-        if (userId) {
-          const likedPodcastsString = localStorage.getItem(`likes_${userId}`);
-          if (likedPodcastsString) {
-            try {
-              const likedPodcasts = JSON.parse(likedPodcastsString);
-              setIsLiked(likedPodcasts.includes(podcastId));
-            } catch (error) {
-              console.error("Error parsing liked podcasts:", error);
+    const fetchPodcast = async () => {
+      try {
+        setIsLoading(true);
+        const allPodcasts = await getAllPodcasts();
+        const foundPodcast = allPodcasts.find(p => p.id === podcastId);
+        
+        if (foundPodcast) {
+          setPodcast(foundPodcast);
+          
+          // Check if user has liked this podcast
+          if (status === 'authenticated' && session?.user) {
+            const userId = (session.user as any)?.id;
+            if (userId) {
+              const likedPodcastsString = localStorage.getItem(`likes_${userId}`);
+              if (likedPodcastsString) {
+                try {
+                  const likedPodcasts = JSON.parse(likedPodcastsString);
+                  setIsLiked(likedPodcasts.includes(podcastId));
+                } catch (error) {
+                  console.error("Error parsing liked podcasts:", error);
+                }
+              }
             }
           }
+          
+          // Load mock comments
+          const mockComments = [
+            {
+              id: '1',
+              user: { name: 'Alex Johnson', image: 'https://placehold.co/100/55f/fff?text=AJ' },
+              text: 'This episode was amazing! I learned so much about this topic.',
+              createdAt: new Date(Date.now() - 3600000).toISOString() // 1 hour ago
+            },
+            {
+              id: '2',
+              user: { name: 'Sarah Williams', image: 'https://placehold.co/100/5f5/fff?text=SW' },
+              text: 'Great insights! Would love to hear more about the practical applications in a future episode.',
+              createdAt: new Date(Date.now() - 86400000).toISOString() // 1 day ago
+            }
+          ];
+          setComments(mockComments);
+        } else {
+          toast.error('Podcast not found');
+          router.push('/');
         }
+      } catch (error) {
+        console.error("Error fetching podcast:", error);
+        toast.error("Failed to load podcast details");
+        router.push('/');
+      } finally {
+        setIsLoading(false);
       }
-      
-      // Load mock comments
-      const mockComments = [
-        {
-          id: '1',
-          user: { name: 'Alex Johnson', image: 'https://placehold.co/100/55f/fff?text=AJ' },
-          text: 'This episode was amazing! I learned so much about this topic.',
-          createdAt: new Date(Date.now() - 3600000).toISOString() // 1 hour ago
-        },
-        {
-          id: '2',
-          user: { name: 'Sarah Williams', image: 'https://placehold.co/100/5f5/fff?text=SW' },
-          text: 'Great insights! Would love to hear more about the practical applications in a future episode.',
-          createdAt: new Date(Date.now() - 86400000).toISOString() // 1 day ago
-        }
-      ];
-      setComments(mockComments);
-    } else {
-      toast.error('Podcast not found');
-      router.push('/');
-    }
+    };
     
-    setIsLoading(false);
+    fetchPodcast();
   }, [params.id, session, status, router]);
 
   const togglePlay = () => {

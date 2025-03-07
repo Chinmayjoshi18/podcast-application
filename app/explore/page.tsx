@@ -34,18 +34,25 @@ const ExplorePage = () => {
 
   useEffect(() => {
     // Load public podcasts from storage
-    const loadPodcasts = () => {
-      const publicPodcasts = getPublicPodcasts();
-      setPodcasts(publicPodcasts);
-      
-      // Initialize comment counts (in a real app, this would come from the API)
-      const initialCommentCounts: Record<string, number> = {};
-      publicPodcasts.forEach(podcast => {
-        initialCommentCounts[podcast.id] = Math.floor(Math.random() * 5); // Mock comment counts
-      });
-      setCommentCounts(initialCommentCounts);
-      
-      setIsLoading(false);
+    const loadPodcasts = async () => {
+      try {
+        setIsLoading(true);
+        const publicPodcasts = await getPublicPodcasts();
+        setPodcasts(publicPodcasts);
+        
+        // Initialize comment counts (in a real app, this would come from the API)
+        const initialCommentCounts: Record<string, number> = {};
+        publicPodcasts.forEach(podcast => {
+          initialCommentCounts[podcast.id] = Math.floor(Math.random() * 5); // Mock comment counts
+        });
+        setCommentCounts(initialCommentCounts);
+      } catch (error) {
+        console.error("Error loading podcasts:", error);
+        toast.error("Failed to load podcasts. Please try again later.");
+        setPodcasts([]);
+      } finally {
+        setIsLoading(false);
+      }
     };
     
     loadPodcasts();
