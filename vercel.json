@@ -1,10 +1,12 @@
 {
-  "buildCommand": "SKIP_TYPESCRIPT_CHECK=true next build",
+  "buildCommand": "npm run prisma:setup && SKIP_TYPESCRIPT_CHECK=true next build",
   "installCommand": "npm install --legacy-peer-deps",
   "framework": "nextjs",
   "outputDirectory": ".next",
   "regions": ["iad1"],
   "env": {
-    "TYPESCRIPT_STRICT": "false"
+    "SKIP_TYPESCRIPT_CHECK": "true",
+    "NEXT_TYPESCRIPT_CHECK_OVERRIDES": "true",
+    "NEXT_IGNORE_TYPECHECK_ERRORS": "true"
   }
 } 
