@@ -7,18 +7,27 @@ import prisma from "./prismadb";
 import { NextAuthOptions } from "next-auth";
 import { JWT } from "next-auth/jwt";
 import { Session, DefaultSession } from "next-auth";
+import { Adapter } from "next-auth/adapters";
 
 // Extend the next-auth types
 declare module "next-auth" {
   interface Session {
     user: {
       id?: string;
+      username?: string;
     } & DefaultSession["user"];
   }
 }
 
+// Function to generate a random username
+const generateRandomUsername = (name: string | null | undefined) => {
+  const baseUsername = name ? name.replace(/\s+/g, '').toLowerCase() : 'user';
+  const randomStr = Math.random().toString(36).substring(2, 8);
+  return `${baseUsername}_${randomStr}`;
+};
+
 export const authOptions: NextAuthOptions = {
-  adapter: PrismaAdapter(prisma),
+  adapter: PrismaAdapter(prisma) as Adapter,
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID || "",
@@ -63,6 +72,38 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
+    async signIn({ user, account, profile }) {
+      // Only process for OAuth providers (Google, GitHub)
+      if (account && account.provider && ['google', 'github'].includes(account.provider)) {
+        try {
+          // Check if this user already exists
+          const existingUser = await prisma.user.findUnique({
+            where: { email: user.email! },
+          });
+          
+          if (!existingUser) {
+            // This is a new user, set up their account
+            const username = generateRandomUsername(user.name);
+            
+            // Note: The actual user creation is handled by the adapter
+            // But we can update the user with additional info
+            await prisma.user.update({
+              where: { email: user.email! },
+              data: {
+                // You could store username in the name field or add a username field to your schema
+                name: user.name || username
+              }
+            });
+          }
+        } catch (error) {
+          console.error("Error in sign in callback:", error);
+          // Continue the sign in process even if our customization fails
+        }
+      }
+      
+      // Always return true to allow sign in
+      return true;
+    },
     async session({ session, token }) {
       if (session.user && token.sub) {
         session.user.id = token.sub;
@@ -85,12 +126,42 @@ export const authOptions: NextAuthOptions = {
       }
       return session;
     },
-    async jwt({ token, user }) {
-      if (user) {
-        token.sub = user.id;
+    async jwt({ token, user, account, profile }) {
+      // Initial sign in
+      if (account && user) {
+        return {
+          ...token,
+          accessToken: account.access_token,
+          sub: user.id,
+        };
       }
       return token;
     },
+  },
+  events: {
+    async createUser({ user }) {
+      // This triggers after a user is created by the adapter
+      // Check if this is an OAuth sign-up by checking prisma directly
+      try {
+        const dbUser = await prisma.user.findUnique({
+          where: { id: user.id },
+          select: { hashedPassword: true, name: true }
+        });
+        
+        // If no hashed password, it's an OAuth user
+        if (dbUser && !dbUser.hashedPassword) {
+          const username = generateRandomUsername(dbUser.name);
+          await prisma.user.update({
+            where: { id: user.id },
+            data: {
+              name: dbUser.name || username
+            }
+          });
+        }
+      } catch (error) {
+        console.error("Error in createUser event:", error);
+      }
+    }
   },
   pages: {
     signIn: "/login",

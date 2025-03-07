@@ -55,10 +55,12 @@ const SignUp = () => {
     setIsLoading(true);
     
     try {
-      await signIn(provider, { callbackUrl: '/dashboard' });
+      await signIn(provider, { 
+        callbackUrl: '/dashboard',
+        redirect: true 
+      });
     } catch (error) {
       toast.error('Login failed');
-    } finally {
       setIsLoading(false);
     }
   };
