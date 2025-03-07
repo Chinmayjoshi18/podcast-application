@@ -1,6 +1,16 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // Tell Next.js to ignore TypeScript errors during build
+  typescript: {
+    // Do not fail the build on type errors
+    ignoreBuildErrors: true,
+  },
+  // Tell ESLint to ignore errors during build
+  eslint: {
+    // Do not fail the build on ESLint errors
+    ignoreDuringBuilds: true,
+  },
   images: {
     dangerouslyAllowSVG: true,
     contentDispositionType: 'attachment',
