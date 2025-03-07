@@ -1,9 +1,17 @@
+import { Suspense } from 'react';
 import ProfileClient from './ProfileClient';
 
-// Minimal server component with no type annotations
-export default function ProfilePage(props) {
-  // Simply extract the ID and pass it to the client component
-  const userId = props.params?.id;
-  
-  return <ProfileClient userId={userId} />;
+interface ProfilePageParams {
+  params: {
+    id: string;
+  };
+}
+
+// Add type declaration explicitly - no promises required
+export default function ProfilePage({ params }: ProfilePageParams) {
+  return (
+    <Suspense fallback={<div>Loading profile...</div>}>
+      <ProfileClient userId={params.id} />
+    </Suspense>
+  );
 }
