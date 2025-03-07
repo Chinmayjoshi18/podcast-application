@@ -3,10 +3,23 @@
 import { useState, useRef, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
-import { AudioRecorder } from 'react-audio-voice-recorder';
+import dynamic from 'next/dynamic';
 import toast from 'react-hot-toast';
 import { FaMicrophone, FaUpload, FaStop, FaPlay, FaPause, FaTrash, FaSave, FaGlobe, FaLock, FaArrowLeft } from 'react-icons/fa';
 import { addPodcast } from '@/lib/storage';
+
+// Import AudioRecorder dynamically with SSR disabled
+const ClientAudioRecorder = dynamic(
+  () => import('react-audio-voice-recorder').then((mod) => {
+    // Create a wrapper component to fix TypeScript issue
+    const AudioRecorderComponent = (props: any) => {
+      const { AudioRecorder } = mod;
+      return <AudioRecorder {...props} />;
+    };
+    return AudioRecorderComponent;
+  }),
+  { ssr: false }
+);
 
 const RecordPage = () => {
   const { data: session, status } = useSession();
@@ -318,7 +331,7 @@ const RecordPage = () => {
             {recordingMode === 'record' ? (
               <div className="flex flex-col items-center p-4">
                 <div className="mb-4">
-                  <AudioRecorder
+                  <ClientAudioRecorder
                     onRecordingComplete={handleRecordingComplete}
                     audioTrackConstraints={{
                       noiseSuppression: true,
