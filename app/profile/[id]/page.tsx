@@ -55,13 +55,15 @@ const mockPodcasts = [
   },
 ];
 
-interface ProfilePageProps {
+// Updated interface to correctly match Next.js types for client components
+type ProfilePageProps = {
   params: {
     id: string;
   };
-}
+  searchParams?: Record<string, string | string[] | undefined>;
+};
 
-const ProfilePage: React.FC<ProfilePageProps> = ({ params }) => {
+const ProfilePage = ({ params }: ProfilePageProps) => {
   const { data: session, status } = useSession();
   const [user, setUser] = useState<any>(null);
   const [podcasts, setPodcasts] = useState<any[]>([]);
@@ -154,7 +156,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ params }) => {
     );
   }
 
-  const isOwnProfile = session?.user?.id === user.id;
+  // Proper type checking for user ID
+  const isOwnProfile = session?.user && (session.user as any).id === user.id;
 
   return (
     <div className="container mx-auto px-4 py-8">
