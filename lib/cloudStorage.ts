@@ -41,23 +41,48 @@ export const uploadAudioFile = async (
   uploadProgressMap.set(uploadId, 0);
 
   try {
-    console.log(`Starting upload for ${file.name} (${Math.round(file.size / (1024 * 1024))}MB)`);
+    const fileSizeMB = Math.round((file.size / (1024 * 1024)) * 100) / 100;
+    console.log(`Starting upload for ${file.name} (${fileSizeMB}MB)`);
     
-    // For files under 10MB, use the simple upload method
-    if (file.size < 10 * 1024 * 1024) {
-      console.log(`Small file detected (${Math.round(file.size / (1024 * 1024))}MB), using direct upload`);
-      return await simpleUpload(file, folder, filename, onProgress);
+    // For very large files (over 50MB), special handling is required
+    const isLargeFile = file.size > 50 * 1024 * 1024;
+    
+    if (isLargeFile) {
+      console.log(`Large file detected (${fileSizeMB}MB), using direct Cloudinary upload`);
+      
+      // First, check with our server for upload parameters
+      const response = await fetch('/api/upload', {
+        method: 'POST',
+        body: createFormData(file, folder),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Server rejected upload request: ${response.status} ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      
+      // If server returns direct upload instructions
+      if (data.success && data.directUpload) {
+        console.log('Received direct upload parameters from server');
+        
+        // Use Cloudinary's direct upload
+        return await directCloudinaryUpload(
+          file,
+          data.uploadParams,
+          onProgress
+        );
+      } else if (data.success && data.url) {
+        // If server handled the upload directly
+        onProgress(100);
+        return data.url;
+      } else {
+        throw new Error(data.error || 'Unknown error from server');
+      }
     }
     
-    // For larger files, use the direct upload to our server API
-    // which handles the file more reliably
-    console.log(`Large file detected (${Math.round(file.size / (1024 * 1024))}MB), using server upload`);
-    
-    // Create form data for the upload
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('fileType', folder === 'podcast-audio' ? 'audio' : 'image');
-    formData.append('folder', folder);
+    // For smaller files (under 50MB), use server-side upload
+    console.log(`Standard file size (${fileSizeMB}MB), using server upload`);
     
     // Use XMLHttpRequest for better progress tracking
     const url = await new Promise<string>((resolve, reject) => {
@@ -104,7 +129,7 @@ export const uploadAudioFile = async (
       
       // Open and send the request
       xhr.open('POST', '/api/upload');
-      xhr.send(formData);
+      xhr.send(createFormData(file, folder));
     });
     
     console.log(`Upload completed successfully: ${url}`);
@@ -121,6 +146,84 @@ export const uploadAudioFile = async (
     uploadProgressMap.delete(uploadId);
     throw error;
   }
+}
+
+/**
+ * Helper to create form data for upload
+ */
+function createFormData(file: File, folder: string): FormData {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('fileType', folder === 'podcast-audio' ? 'audio' : 'image');
+  formData.append('folder', folder);
+  return formData;
+}
+
+/**
+ * Direct upload to Cloudinary, bypassing our server size limits
+ */
+async function directCloudinaryUpload(
+  file: File, 
+  uploadParams: {
+    cloudName: string;
+    uploadPreset: string;
+    folder: string;
+    resourceType: string;
+  },
+  onProgress: (progress: number) => void
+): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
+    // Create a new FormData instance for the upload
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('upload_preset', uploadParams.uploadPreset);
+    formData.append('folder', uploadParams.folder);
+    
+    // Construct the Cloudinary upload URL
+    const uploadUrl = `https://api.cloudinary.com/v1_1/${uploadParams.cloudName}/upload`;
+    
+    // Use XMLHttpRequest for better progress tracking
+    const xhr = new XMLHttpRequest();
+    
+    // Track upload progress
+    xhr.upload.addEventListener('progress', (event) => {
+      if (event.lengthComputable) {
+        // Cap progress at 95% until we get final confirmation
+        const progress = Math.min(Math.round((event.loaded / event.total) * 100), 95);
+        onProgress(progress);
+        console.log(`Direct upload progress: ${progress}%`);
+      }
+    });
+    
+    xhr.addEventListener('load', () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const response = JSON.parse(xhr.responseText);
+          console.log('Direct upload complete, received response from Cloudinary');
+          onProgress(100);
+          resolve(response.secure_url);
+        } catch (error) {
+          reject(new Error(`Failed to parse Cloudinary response: ${error.message}`));
+        }
+      } else {
+        reject(new Error(`Cloudinary upload failed with status: ${xhr.status}`));
+      }
+    });
+    
+    xhr.addEventListener('error', () => {
+      reject(new Error('Cloudinary upload failed due to network error'));
+    });
+    
+    xhr.addEventListener('abort', () => {
+      reject(new Error('Cloudinary upload was aborted'));
+    });
+    
+    // Open and send the request
+    xhr.open('POST', uploadUrl);
+    xhr.send(formData);
+    
+    console.log('Started direct upload to Cloudinary');
+  });
 }
 
 /**

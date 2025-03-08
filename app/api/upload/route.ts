@@ -10,11 +10,13 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-// This configuration disables the default body parser for this route
-// allowing us to handle large files directly
+// This configuration explicitly disables Next.js's default body parser
+// to handle large file uploads ourselves
 export const config = {
   api: {
     bodyParser: false,
+    // Increase the response limit to handle large files
+    responseLimit: '100mb',
   },
 };
 
@@ -40,58 +42,86 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No file provided' }, { status: 400 });
     }
 
-    console.log(`Starting upload of ${file.name} (${file.size} bytes) as ${fileType}`);
+    // Log file size for debugging
+    const fileSizeMB = Math.round((file.size / (1024 * 1024)) * 100) / 100;
+    console.log(`Handling upload of ${file.name} (${fileSizeMB}MB) as ${fileType}`);
 
-    // Convert file to base64 for reliable uploading
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    const base64File = buffer.toString('base64');
-    const base64FileData = `data:${file.type};base64,${base64File}`;
-
-    // Configure upload parameters
-    const uploadOptions: any = {
-      folder: folder,
-      resource_type: isAudio ? 'video' : 'auto', // Cloudinary uses 'video' type for audio files
-      use_filename: true,
-      unique_filename: true,
-    };
-
-    // For audio files add additional options
-    if (isAudio) {
-      uploadOptions.audio_codec = 'aac';
-      uploadOptions.bit_rate = '128k';
-      uploadOptions.overwrite = true;
+    // For very large files, use direct unsigned upload to Cloudinary
+    // This bypasses our server size limits
+    if (file.size > 50 * 1024 * 1024) {
+      return NextResponse.json({
+        success: true,
+        // Return instructions for client-side upload
+        directUpload: true,
+        uploadParams: {
+          cloudName: process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
+          uploadPreset: process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET,
+          folder: folder,
+          resourceType: isAudio ? 'video' : 'auto',
+        }
+      });
     }
 
-    // Upload to Cloudinary
-    const result = await new Promise((resolve, reject) => {
-      cloudinary.uploader.upload(
-        base64FileData,
-        uploadOptions,
-        (error, result) => {
-          if (error) {
-            console.error('Cloudinary upload error:', error);
-            reject(error);
-          } else {
-            console.log('Upload successful:', result?.public_id);
-            resolve(result);
+    // For smaller files, we can handle the upload server-side
+    try {
+      // Convert file to buffer
+      const arrayBuffer = await file.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      
+      // Generate upload options
+      const uploadOptions: any = {
+        folder: folder,
+        resource_type: isAudio ? 'video' : 'auto', // Cloudinary uses 'video' for audio
+        use_filename: true,
+        unique_filename: true,
+      };
+      
+      // For audio files, add optimized settings
+      if (isAudio) {
+        uploadOptions.audio_codec = 'aac';
+        uploadOptions.bit_rate = '128k';
+      }
+      
+      // Upload to Cloudinary using buffer
+      const uploadResult = await new Promise((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+          uploadOptions,
+          (error, result) => {
+            if (error) {
+              console.error('Cloudinary upload error:', error);
+              reject(error);
+            } else {
+              console.log('Upload successful:', result?.public_id);
+              resolve(result);
+            }
           }
-        }
-      );
-    });
-
-    // Return the upload result with specific fields
-    return NextResponse.json({
-      success: true,
-      url: (result as any).secure_url,
-      publicId: (result as any).public_id,
-      ...(isAudio && { duration: (result as any).duration })
-    });
+        );
+        
+        // Send buffer to upload stream
+        uploadStream.end(buffer);
+      });
+      
+      // Return success with URL
+      return NextResponse.json({
+        success: true,
+        directUpload: false,
+        url: (uploadResult as any).secure_url,
+        publicId: (uploadResult as any).public_id,
+        ...(isAudio && { duration: (uploadResult as any).duration })
+      });
+    } catch (error) {
+      console.error('Server-side upload failed:', error);
+      return NextResponse.json({ 
+        success: false,
+        error: 'Server-side upload failed',
+        details: (error as Error).message 
+      }, { status: 500 });
+    }
   } catch (error) {
-    console.error('Error uploading file:', error);
+    console.error('Error handling upload request:', error);
     return NextResponse.json({ 
       success: false,
-      error: 'File upload failed',
+      error: 'Upload failed',
       details: (error as Error).message 
     }, { status: 500 });
   }
