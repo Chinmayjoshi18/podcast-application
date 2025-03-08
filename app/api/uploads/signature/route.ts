@@ -32,6 +32,48 @@ function parseCloudinaryUrl(url: string): { cloudName: string; apiKey: string; a
 }
 
 /**
+ * Get Cloudinary credentials from environment variables
+ * Supports multiple naming conventions for better compatibility
+ */
+function getCloudinaryCredentials() {
+  // Try different variable names for cloud name
+  const cloudName = 
+    process.env.CLOUDINARY_CLOUD_NAME || 
+    process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || 
+    "dbrso3dnr"; // Default as fallback
+  
+  // Try different variable names for API key
+  let apiKey = 
+    process.env.CLOUDINARY_API_KEY || 
+    "";
+  
+  // Try different variable names for API secret
+  let apiSecret = 
+    process.env.CLOUDINARY_API_SECRET || 
+    "";
+  
+  // Try to parse from CLOUDINARY_URL if individual credentials are missing
+  const cloudinaryUrl = process.env.CLOUDINARY_URL;
+  if (cloudinaryUrl && (!apiSecret || !apiKey)) {
+    const parsedCreds = parseCloudinaryUrl(cloudinaryUrl);
+    if (parsedCreds) {
+      apiKey = parsedCreds.apiKey;
+      apiSecret = parsedCreds.apiSecret;
+      // Only override cloud name if it wasn't set explicitly
+      if (cloudName === "dbrso3dnr" && parsedCreds.cloudName) {
+        return {
+          apiKey,
+          apiSecret,
+          cloudName: parsedCreds.cloudName
+        };
+      }
+    }
+  }
+  
+  return { apiKey, apiSecret, cloudName };
+}
+
+/**
  * Generate a signature for Cloudinary uploads
  * Signed uploads prevent unauthorized users from uploading files directly
  * 
@@ -64,22 +106,8 @@ export async function POST(req: NextRequest) {
     // Create a timestamp for the signature
     const timestamp = Math.round(new Date().getTime() / 1000);
 
-    // Try to get credentials from CLOUDINARY_URL first, then fall back to individual env vars
-    let apiSecret = process.env.CLOUDINARY_API_SECRET || "";
-    let apiKey = process.env.CLOUDINARY_API_KEY || "";
-    let cloudName = process.env.CLOUDINARY_CLOUD_NAME || "dbrso3dnr";
-    
-    // If we have a CLOUDINARY_URL, parse it for credentials
-    const cloudinaryUrl = process.env.CLOUDINARY_URL;
-    if (cloudinaryUrl && (!apiSecret || !apiKey)) {
-      const parsedCreds = parseCloudinaryUrl(cloudinaryUrl);
-      if (parsedCreds) {
-        apiKey = parsedCreds.apiKey;
-        apiSecret = parsedCreds.apiSecret;
-        cloudName = parsedCreds.cloudName;
-        console.log(`Using credentials from CLOUDINARY_URL for cloud: ${cloudName}`);
-      }
-    }
+    // Get Cloudinary credentials
+    const { apiKey, apiSecret, cloudName } = getCloudinaryCredentials();
 
     // Ensure we have the required API credentials
     if (!apiSecret || !apiKey) {
