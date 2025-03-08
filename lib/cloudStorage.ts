@@ -5,12 +5,6 @@
 
 import toast from 'react-hot-toast';
 
-// Define constants for upload
-const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB chunks
-const MAX_RETRIES = 3;
-const CLOUDINARY_UPLOAD_URL = `https://api.cloudinary.com/v1_1/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/upload`;
-const CLOUDINARY_UPLOAD_PRESET = "podcast_uploads";
-
 // Global state for tracking multiple file uploads
 const uploadProgressMap = new Map<string, number>();
 
@@ -477,49 +471,5 @@ async function directCloudinaryUpload(
       console.error('Error sending XHR request:', error);
       reject(error);
     }
-  });
-}
-
-/**
- * Performs a simple upload for smaller files
- */
-const simpleUpload = async (
-  file: File,
-  folder: string,
-  filename: string,
-  onProgress: (progress: number) => void
-): Promise<string> => {
-  const formData = new FormData();
-  formData.append('file', file);
-  formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
-  formData.append('folder', folder);
-  formData.append('public_id', filename.replace(/\.[^/.]+$/, "")); // Remove extension
-  
-  // Set up progress tracking with XMLHttpRequest
-  return new Promise((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    
-    xhr.upload.addEventListener('progress', (event) => {
-      if (event.lengthComputable) {
-        const progress = Math.round((event.loaded / event.total) * 100);
-        onProgress(progress);
-      }
-    });
-    
-    xhr.addEventListener('load', () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        const response = JSON.parse(xhr.responseText);
-        resolve(response.secure_url);
-      } else {
-        reject(new Error(`Upload failed with status: ${xhr.status}`));
-      }
-    });
-    
-    xhr.addEventListener('error', () => {
-      reject(new Error('Upload failed due to network error'));
-    });
-    
-    xhr.open('POST', CLOUDINARY_UPLOAD_URL);
-    xhr.send(formData);
   });
 } 
