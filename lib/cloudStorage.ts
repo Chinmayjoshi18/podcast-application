@@ -5,24 +5,143 @@
 
 import toast from 'react-hot-toast';
 
-// Global state for tracking multiple file uploads
-const uploadProgressMap = new Map<string, number>();
+// Cache to store uploaded file URLs
+interface UploadCache {
+  status: 'uploading' | 'completed' | 'error';
+  url?: string;
+  progress: number;
+  error?: string;
+}
+
+// Global cache for file uploads
+const uploadCache = new Map<string, UploadCache>();
 
 /**
  * Get the current progress of a file upload by ID
  */
 export const getUploadProgress = (uploadId: string): number => {
-  return uploadProgressMap.get(uploadId) || 0;
+  const cache = uploadCache.get(uploadId);
+  return cache?.progress || 0;
 }
 
 /**
- * Upload a file to cloud storage
- * 
- * @param file The file to upload
- * @param folder The destination folder in cloud storage
- * @param filename The filename to use in cloud storage
- * @param onProgress Progress callback function
- * @returns Promise resolving to the file URL when complete
+ * Check if a file is already uploaded or uploading
+ */
+export const isFileUploading = (fileId: string): boolean => {
+  const cache = uploadCache.get(fileId);
+  return cache?.status === 'uploading';
+}
+
+/**
+ * Check if a file upload is complete
+ */
+export const isFileUploaded = (fileId: string): boolean => {
+  const cache = uploadCache.get(fileId);
+  return cache?.status === 'completed' && !!cache.url;
+}
+
+/**
+ * Get the URL of an already uploaded file
+ */
+export const getUploadedFileUrl = (fileId: string): string | null => {
+  const cache = uploadCache.get(fileId);
+  return (cache?.status === 'completed' && cache.url) ? cache.url : null;
+}
+
+/**
+ * Start uploading a file immediately when it's selected
+ * This will begin the upload process in the background while the user continues filling the form
+ */
+export const startFileUpload = async (
+  file: File,
+  folder: string,
+  onProgress?: (progress: number) => void
+): Promise<string> => {
+  // Generate a unique file ID based on file name and last modified date
+  const fileId = `${file.name}_${file.lastModified}`;
+  
+  // Check if this file is already uploading or uploaded
+  const existingCache = uploadCache.get(fileId);
+  if (existingCache) {
+    if (existingCache.status === 'completed' && existingCache.url) {
+      console.log(`File ${file.name} already uploaded, returning cached URL`);
+      onProgress?.(100);
+      return existingCache.url;
+    } else if (existingCache.status === 'uploading') {
+      console.log(`File ${file.name} is currently uploading, waiting for completion`);
+      return new Promise((resolve, reject) => {
+        // Poll for completion
+        const checkInterval = setInterval(() => {
+          const cache = uploadCache.get(fileId);
+          if (cache?.status === 'completed' && cache.url) {
+            clearInterval(checkInterval);
+            onProgress?.(100);
+            resolve(cache.url);
+          } else if (cache?.status === 'error') {
+            clearInterval(checkInterval);
+            reject(new Error(cache.error || 'Unknown upload error'));
+          }
+        }, 1000);
+      });
+    }
+  }
+  
+  // Initialize cache entry
+  uploadCache.set(fileId, {
+    status: 'uploading',
+    progress: 0,
+  });
+  
+  // Call the actual upload function
+  try {
+    // Create a progress handler that updates both the cache and calls the provided callback
+    const progressHandler = (progress: number) => {
+      const cache = uploadCache.get(fileId);
+      if (cache) {
+        cache.progress = progress;
+        uploadCache.set(fileId, cache);
+      }
+      onProgress?.(progress);
+    };
+    
+    // Start at 1% immediately
+    progressHandler(1);
+    
+    // Generate a filename that won't conflict
+    const filename = `${file.name.replace(/\.[^/.]+$/, '')}_${Date.now()}`;
+    
+    // Perform the actual upload
+    console.log(`Starting background upload for ${file.name} (${Math.round(file.size / (1024 * 1024))}MB)`);
+    const url = await uploadFileToCloudinary(file, folder, filename, progressHandler);
+    
+    // Update cache with the completed URL
+    uploadCache.set(fileId, {
+      status: 'completed',
+      url,
+      progress: 100,
+    });
+    
+    // Ensure progress is set to 100%
+    onProgress?.(100);
+    
+    console.log(`Background upload completed for ${file.name}`);
+    return url;
+  } catch (error) {
+    console.error(`Error uploading file ${file.name}:`, error);
+    
+    // Update cache with the error
+    uploadCache.set(fileId, {
+      status: 'error',
+      progress: 0,
+      error: error.message || 'Unknown upload error',
+    });
+    
+    throw error;
+  }
+}
+
+/**
+ * Upload a file to cloud storage - this function maintains backward compatibility
  */
 export const uploadAudioFile = async (
   file: File,
@@ -30,34 +149,71 @@ export const uploadAudioFile = async (
   filename: string,
   onProgress: (progress: number) => void
 ): Promise<string> => {
-  // Immediately show some progress to indicate we're starting
-  onProgress(1);
-  console.log(`Starting upload for ${file.name} (${Math.round(file.size / (1024 * 1024))}MB)`);
+  // Check if this file is already uploading or uploaded
+  const fileId = `${file.name}_${file.lastModified}`;
+  
+  // If the file is already uploaded, return the URL immediately
+  if (isFileUploaded(fileId)) {
+    const url = getUploadedFileUrl(fileId);
+    if (url) {
+      console.log(`File ${file.name} is already uploaded, returning cached URL`);
+      onProgress(100);
+      return url;
+    }
+  }
+  
+  // If not already uploaded, start a new upload
+  console.log(`File ${file.name} is not cached, starting new upload`);
+  return startFileUpload(file, folder, onProgress);
+}
 
-  // Create unique ID for tracking
-  const uploadId = `upload_${Date.now()}`;
-  uploadProgressMap.set(uploadId, 1);
-
+/**
+ * Internal function that handles the actual upload to Cloudinary
+ */
+async function uploadFileToCloudinary(
+  file: File,
+  folder: string,
+  filename: string,
+  onProgress: (progress: number) => void
+): Promise<string> {
+  // We're going to use a reliable XHR approach with signed URLs for Cloudinary
+  const isAudio = folder === 'podcast-audio';
+  const resourceType = isAudio ? 'video' : 'auto'; // Cloudinary uses 'video' for audio files
+  
+  // For signed uploads, we'll get a signature from our server
   try {
-    // We're going to use a simple, reliable approach with direct upload to Cloudinary
-    const isAudio = folder === 'podcast-audio';
-    const resourceType = isAudio ? 'video' : 'auto'; // Cloudinary uses 'video' for audio files
+    // First, request a signed upload URL from our backend
+    const signatureResponse = await fetch('/api/uploads/signature', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        filename,
+        folder,
+        fileType: file.type,
+        fileSize: file.size,
+        isAudio,
+      }),
+    });
     
-    // Cloudinary credentials - using ml_default which is a known working preset
-    const cloudName = "dbrso3dnr";
-    const uploadPreset = "ml_default"; // Changed from "podcast_uploads" to "ml_default" (default preset)
+    if (!signatureResponse.ok) {
+      const errorData = await signatureResponse.json();
+      throw new Error(`Failed to get upload signature: ${errorData.error || signatureResponse.statusText}`);
+    }
     
-    // Construct upload URL - critical to use the right endpoint for audio files
-    const uploadUrl = `https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/upload`;
+    const { signature, timestamp, cloudName, apiKey } = await signatureResponse.json();
     
+    // Now we can upload directly to Cloudinary with the signature
     return new Promise((resolve, reject) => {
-      // Set up an XMLHttpRequest for better progress tracking
       const xhr = new XMLHttpRequest();
       
-      // Create form data with the file and parameters
+      // Create form data with the file and signature parameters
       const formData = new FormData();
       formData.append('file', file);
-      formData.append('upload_preset', uploadPreset);
+      formData.append('api_key', apiKey);
+      formData.append('timestamp', timestamp.toString());
+      formData.append('signature', signature);
       formData.append('folder', folder);
       formData.append('public_id', `podcast_${Date.now()}`);
       
@@ -73,21 +229,14 @@ export const uploadAudioFile = async (
           // Calculate progress percentage (limit to 95% until complete)
           const progressPercent = Math.min(Math.round((event.loaded / event.total) * 100), 95);
           console.log(`Upload progress: ${progressPercent}%`);
-          uploadProgressMap.set(uploadId, progressPercent);
           onProgress(progressPercent);
         }
       });
       
-      // Add additional event listeners for better debugging
+      // Additional events for better tracking
       xhr.addEventListener('loadstart', () => {
         console.log('Upload started');
-        // Ensure we show at least 2% progress when starting
-        uploadProgressMap.set(uploadId, 2);
         onProgress(2);
-      });
-      
-      xhr.addEventListener('loadend', () => {
-        console.log('Upload ended (success or error)');
       });
       
       xhr.addEventListener('error', (error) => {
@@ -95,14 +244,8 @@ export const uploadAudioFile = async (
         reject(new Error('Network error during upload'));
       });
       
-      xhr.addEventListener('abort', () => {
-        console.warn('Upload aborted');
-        reject(new Error('Upload was aborted'));
-      });
-      
       // Handle the response
       xhr.addEventListener('load', () => {
-        // Log detailed information about the response
         console.log(`Upload completed with status: ${xhr.status}`);
         
         if (xhr.status >= 200 && xhr.status < 300) {
@@ -111,7 +254,6 @@ export const uploadAudioFile = async (
             console.log('Cloudinary response:', response);
             
             if (response && response.secure_url) {
-              uploadProgressMap.set(uploadId, 100);
               onProgress(100);
               resolve(response.secure_url);
             } else {
@@ -143,60 +285,40 @@ export const uploadAudioFile = async (
         reject(new Error('Upload timed out after 30 minutes'));
       };
       
-      // Add a fallback progress timer that ensures progress always increases
-      // This helps to provide feedback even if the progress events are not firing
+      // Add a fallback progress timer
       let currentProgress = 2;
       const progressTimer = setInterval(() => {
-        // Only increment if the XHR progress hasn't updated in a while
-        const currentXhrProgress = uploadProgressMap.get(uploadId) || 0;
-        if (currentProgress <= currentXhrProgress) {
-          currentProgress = currentXhrProgress + 1;
-        } else {
-          currentProgress += 1;
-        }
-        
+        currentProgress += 1;
         if (currentProgress <= 90) {
-          console.log(`Fallback progress update: ${currentProgress}%`);
-          uploadProgressMap.set(uploadId, currentProgress);
           onProgress(currentProgress);
         } else {
           clearInterval(progressTimer);
         }
-      }, 2000); // Update every 2 seconds
+      }, 3000);
       
       // Execute the upload
       try {
-        xhr.open('POST', uploadUrl);
+        xhr.open('POST', `https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/upload`);
         xhr.send(formData);
-        console.log('XHR request sent to Cloudinary with params:', {
-          cloudName,
-          uploadPreset,
-          folder,
-          resourceType
-        });
+        console.log('XHR request sent to Cloudinary with signed parameters');
       } catch (error) {
         clearInterval(progressTimer);
         console.error('Error initiating upload:', error);
         reject(error);
       }
       
-      // Cleanup function to clear the progress timer when the upload is done
+      // Cleanup function
       const cleanup = () => {
         clearInterval(progressTimer);
-        // Clean up progress tracking after completion or error
-        setTimeout(() => {
-          uploadProgressMap.delete(uploadId);
-        }, 5000); // Clean up after 5 seconds
       };
       
-      // Ensure the timer is cleared regardless of success or failure
+      // Ensure the timer is cleared
       xhr.addEventListener('loadend', cleanup);
       xhr.addEventListener('error', cleanup);
       xhr.addEventListener('abort', cleanup);
     });
   } catch (error) {
-    console.error('Unexpected error in uploadAudioFile:', error);
-    toast.error(`Upload failed: ${error.message || 'Unknown error'}`);
+    console.error('Error in uploadFileToCloudinary:', error);
     throw error;
   }
 }
