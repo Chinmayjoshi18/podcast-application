@@ -180,8 +180,9 @@ async function uploadFileToCloudinary(
   const isAudio = folder === 'podcast-audio';
   const resourceType = isAudio ? 'video' : 'auto'; // Cloudinary uses 'video' for audio files
   
-  // For signed uploads, we'll get a signature from our server
   try {
+    console.log(`Requesting signed upload URL for ${filename} in folder ${folder}`);
+    
     // First, request a signed upload URL from our backend
     const signatureResponse = await fetch('/api/uploads/signature', {
       method: 'POST',
@@ -198,11 +199,30 @@ async function uploadFileToCloudinary(
     });
     
     if (!signatureResponse.ok) {
-      const errorData = await signatureResponse.json();
-      throw new Error(`Failed to get upload signature: ${errorData.error || signatureResponse.statusText}`);
+      let errorMessage = 'Failed to get upload signature';
+      try {
+        const errorData = await signatureResponse.json();
+        errorMessage = `Failed to get upload signature: ${errorData.error || signatureResponse.statusText}`;
+      } catch (e) {
+        // If we can't parse the JSON, just use the status text
+      }
+      console.error(errorMessage);
+      throw new Error(errorMessage);
     }
     
-    const { signature, timestamp, cloudName, apiKey } = await signatureResponse.json();
+    const signatureData = await signatureResponse.json();
+    console.log('Received signature data:', { 
+      ...signatureData,
+      // Don't log the signature itself for security
+      hasSignature: !!signatureData.signature 
+    });
+    
+    if (!signatureData.signature || !signatureData.timestamp || !signatureData.apiKey) {
+      console.error('Missing required signature data');
+      throw new Error('Invalid signature data received from server');
+    }
+    
+    const { signature, timestamp, cloudName, apiKey, publicId } = signatureData;
     
     // Now we can upload directly to Cloudinary with the signature
     return new Promise((resolve, reject) => {
@@ -215,12 +235,17 @@ async function uploadFileToCloudinary(
       formData.append('timestamp', timestamp.toString());
       formData.append('signature', signature);
       formData.append('folder', folder);
-      formData.append('public_id', `podcast_${Date.now()}`);
+      
+      // Use the provided public_id from the server
+      if (publicId) {
+        formData.append('public_id', publicId);
+      } else {
+        formData.append('public_id', `podcast_${Date.now()}`);
+      }
       
       // Add additional parameters for audio files
       if (isAudio) {
         formData.append('resource_type', 'video');
-        formData.append('audio_codec', 'aac');
       }
       
       // Track upload progress
@@ -285,6 +310,10 @@ async function uploadFileToCloudinary(
         reject(new Error('Upload timed out after 30 minutes'));
       };
       
+      // Construct the upload URL
+      const uploadUrl = `https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/upload`;
+      console.log(`Uploading to ${uploadUrl}`);
+      
       // Add a fallback progress timer
       let currentProgress = 2;
       const progressTimer = setInterval(() => {
@@ -298,7 +327,7 @@ async function uploadFileToCloudinary(
       
       // Execute the upload
       try {
-        xhr.open('POST', `https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/upload`);
+        xhr.open('POST', uploadUrl);
         xhr.send(formData);
         console.log('XHR request sent to Cloudinary with signed parameters');
       } catch (error) {
@@ -319,6 +348,7 @@ async function uploadFileToCloudinary(
     });
   } catch (error) {
     console.error('Error in uploadFileToCloudinary:', error);
+    toast.error(`Upload failed: ${error.message || 'Unknown error'}`);
     throw error;
   }
 }

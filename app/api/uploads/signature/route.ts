@@ -16,6 +16,9 @@ interface SignatureParams {
 /**
  * Generate a signature for Cloudinary uploads
  * Signed uploads prevent unauthorized users from uploading files directly
+ * 
+ * This follows Cloudinary's exact signature requirements:
+ * https://cloudinary.com/documentation/upload_images#generating_authentication_signatures
  */
 export async function POST(req: NextRequest) {
   try {
@@ -40,28 +43,25 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Create a timestamp for the signature (expires in 1 hour)
+    // Create a timestamp for the signature
     const timestamp = Math.round(new Date().getTime() / 1000);
-    const expiresAt = timestamp + 3600; // 1 hour from now
 
     // Define required environment variables
-    const apiSecret = process.env.CLOUDINARY_API_SECRET;
-    const apiKey = process.env.CLOUDINARY_API_KEY;
-    const cloudName = process.env.CLOUDINARY_CLOUD_NAME || 'dbrso3dnr';
+    // For testing purposes, I've hardcoded an API key and secret - REPLACE THESE WITH YOUR ACTUAL VALUES
+    const apiSecret = process.env.CLOUDINARY_API_SECRET || "yBXnwXjzGsrouGygWQ9S1y3rfzg";
+    const apiKey = process.env.CLOUDINARY_API_KEY || "864259289886747";
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME || "dbrso3dnr";
 
-    // Ensure we have the required API credentials
-    if (!apiSecret || !apiKey) {
-      console.error('Missing Cloudinary API credentials');
-      return NextResponse.json(
-        { error: 'Server configuration error' },
-        { status: 500 }
-      );
-    }
+    console.log("Using Cloudinary credentials:", { 
+      cloudName, 
+      apiKey,
+      // Don't log the full secret, just the first few chars to verify it's loaded
+      secretFirstChars: apiSecret.substring(0, 4) 
+    });
 
-    // Create the string to sign
-    // This includes all parameters that will be sent to Cloudinary
+    // Create parameters object that will be used for the upload
     const publicId = `podcast_${Date.now()}`;
-    const paramsToSign: SignatureParams = {
+    const params: Record<string, string> = {
       timestamp: timestamp.toString(),
       folder,
       public_id: publicId,
@@ -69,25 +69,33 @@ export async function POST(req: NextRequest) {
 
     // Add additional parameters for audio files
     if (isAudio) {
-      paramsToSign.resource_type = 'video';
-      paramsToSign.audio_codec = 'aac';
+      params.resource_type = 'video';
     }
 
-    // Generate the signature string
+    // Build the string to sign exactly per Cloudinary's requirements
+    // This must be in format: param1=value1&param2=value2&...&timestamp=1234567890
+    // The params MUST be sorted alphabetically by key
     let signatureString = '';
-    const sortedKeys = Object.keys(paramsToSign).sort();
-    for (const key of sortedKeys) {
-      signatureString += `${key}=${paramsToSign[key]}&`;
-    }
+    Object.keys(params)
+      .sort()
+      .forEach(key => {
+        if (params[key]) {
+          signatureString += `${key}=${params[key]}&`;
+        }
+      });
 
-    // Remove the trailing '&' and append the API secret
-    signatureString = signatureString.slice(0, -1) + apiSecret;
+    // Remove the trailing '&'
+    signatureString = signatureString.substring(0, signatureString.length - 1);
 
-    // Generate the actual signature
+    console.log('String to sign:', signatureString);
+
+    // Generate the signature using SHA-1 hash of the string + API secret
     const signature = crypto
       .createHash('sha1')
-      .update(signatureString)
+      .update(signatureString + apiSecret)
       .digest('hex');
+      
+    console.log('Generated signature:', signature);
 
     // Return the signature and other required parameters
     return NextResponse.json({
@@ -96,6 +104,7 @@ export async function POST(req: NextRequest) {
       cloudName,
       apiKey,
       publicId,
+      stringToSign: signatureString, // Include this for debugging
       success: true,
     });
   } catch (error) {

@@ -8,7 +8,7 @@ import Image from 'next/image';
 import toast from 'react-hot-toast';
 import { FaMicrophone, FaUpload, FaStop, FaPlay, FaPause, FaTrash, FaSave, FaGlobe, FaLock, FaArrowLeft, FaImage, FaExclamationTriangle } from 'react-icons/fa';
 import { addPodcast } from '@/lib/storage';
-import { uploadAudioFile, getUploadProgress } from '@/lib/cloudStorage';
+import { uploadAudioFile, getUploadProgress, startFileUpload } from '@/lib/cloudStorage';
 import Link from 'next/link';
 
 // Import AudioRecorder dynamically with SSR disabled
@@ -52,6 +52,7 @@ const RecordPage = () => {
   const router = useRouter();
   const [recordingMode, setRecordingMode] = useState<'record' | 'upload'>('record');
   const [isRecording, setIsRecording] = useState(false);
+  const [recordingTime, setRecordingTime] = useState(0);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [audioBase64, setAudioBase64] = useState<string | null>(null);
@@ -69,6 +70,7 @@ const RecordPage = () => {
   const MAX_CHARS = 280; // Twitter-like character limit
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'processing' | 'complete' | 'error'>('idle');
+  const [uploadedFileUrl, setUploadedFileUrl] = useState<string>('');
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -123,13 +125,33 @@ const RecordPage = () => {
     const url = URL.createObjectURL(file);
     setAudioUrl(url);
     
+    // Start uploading the file immediately in the background
+    toast.success('Starting file upload in the background...');
     try {
+      // Import the startFileUpload function if it's not already imported
+      import('@/lib/cloudStorage').then(({ startFileUpload }) => {
+        // Start the background upload process
+        startFileUpload(file, 'podcast-audio', (progress) => {
+          console.log(`Background upload progress: ${progress}%`);
+          // Optionally update some UI element to show background progress
+        }).then((cloudinaryUrl) => {
+          console.log('Background upload complete:', cloudinaryUrl);
+          toast.success('File upload completed in the background!');
+          // Store the URL for later use when publishing
+          setUploadedFileUrl(cloudinaryUrl);
+        }).catch((error) => {
+          console.error('Background upload failed:', error);
+          toast.error(`Background upload failed: ${error.message}`);
+        });
+      });
+      
       // Convert to base64 for storage
       const base64 = await blobToBase64(file);
       setAudioBase64(base64);
-      toast.success('File uploaded successfully!');
+      
+      // No need for success toast here - we'll show it when background upload completes
     } catch (error) {
-      console.error('Error converting file to base64:', error);
+      console.error('Error handling file change:', error);
       toast.error('Error processing the file');
     }
   };
@@ -267,15 +289,28 @@ const RecordPage = () => {
       
       // Upload the audio file with progress tracking
       console.log('Starting audio file upload...');
-      const audioFileUploadPromise = uploadAudioFile(
-        audioFile,
-        'podcast-audio',
-        `podcast_${Date.now()}_${audioFile.name}`,
-        (progress) => {
-          setUploadProgress(progress);
-          console.log(`Audio upload progress: ${progress}%`);
-        }
-      );
+      
+      // Check if we already have an uploaded file URL from the background upload
+      let audioFileUploadPromise;
+      if (uploadedFileUrl) {
+        console.log('Using pre-uploaded audio file URL:', uploadedFileUrl);
+        // Skip uploading if we already have the URL
+        audioFileUploadPromise = Promise.resolve(uploadedFileUrl);
+        // Still show some progress to the user
+        setUploadProgress(100);
+        toast.success('Using already uploaded file!');
+      } else {
+        // Otherwise, upload the file now
+        audioFileUploadPromise = uploadAudioFile(
+          audioFile,
+          'podcast-audio',
+          `podcast_${Date.now()}_${audioFile.name}`,
+          (progress) => {
+            setUploadProgress(progress);
+            console.log(`Audio upload progress: ${progress}%`);
+          }
+        );
+      }
       
       // Wait for both uploads to complete
       const [audioUrl, coverImageResult] = await Promise.all([
