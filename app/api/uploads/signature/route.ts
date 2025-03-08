@@ -13,6 +13,24 @@ interface SignatureParams {
   [key: string]: string | undefined;
 }
 
+// Parse Cloudinary URL to extract credentials
+function parseCloudinaryUrl(url: string): { cloudName: string; apiKey: string; apiSecret: string } | null {
+  try {
+    // Format: cloudinary://api_key:api_secret@cloud_name
+    const match = url.match(/cloudinary:\/\/([^:]+):([^@]+)@(.+)/);
+    if (!match) return null;
+    
+    return {
+      apiKey: match[1],
+      apiSecret: match[2],
+      cloudName: match[3]
+    };
+  } catch (error) {
+    console.error('Failed to parse Cloudinary URL:', error);
+    return null;
+  }
+}
+
 /**
  * Generate a signature for Cloudinary uploads
  * Signed uploads prevent unauthorized users from uploading files directly
@@ -46,14 +64,26 @@ export async function POST(req: NextRequest) {
     // Create a timestamp for the signature
     const timestamp = Math.round(new Date().getTime() / 1000);
 
-    // Define required environment variables
-    const apiSecret = process.env.CLOUDINARY_API_SECRET || "";
-    const apiKey = process.env.CLOUDINARY_API_KEY || "";
-    const cloudName = process.env.CLOUDINARY_CLOUD_NAME || "dbrso3dnr";
+    // Try to get credentials from CLOUDINARY_URL first, then fall back to individual env vars
+    let apiSecret = process.env.CLOUDINARY_API_SECRET || "";
+    let apiKey = process.env.CLOUDINARY_API_KEY || "";
+    let cloudName = process.env.CLOUDINARY_CLOUD_NAME || "dbrso3dnr";
+    
+    // If we have a CLOUDINARY_URL, parse it for credentials
+    const cloudinaryUrl = process.env.CLOUDINARY_URL;
+    if (cloudinaryUrl && (!apiSecret || !apiKey)) {
+      const parsedCreds = parseCloudinaryUrl(cloudinaryUrl);
+      if (parsedCreds) {
+        apiKey = parsedCreds.apiKey;
+        apiSecret = parsedCreds.apiSecret;
+        cloudName = parsedCreds.cloudName;
+        console.log(`Using credentials from CLOUDINARY_URL for cloud: ${cloudName}`);
+      }
+    }
 
     // Ensure we have the required API credentials
     if (!apiSecret || !apiKey) {
-      console.error('Missing Cloudinary API credentials');
+      console.error('Missing Cloudinary API credentials - check your environment variables');
       return NextResponse.json(
         { error: 'Server configuration error - missing Cloudinary credentials' },
         { status: 500 }
@@ -62,9 +92,8 @@ export async function POST(req: NextRequest) {
 
     console.log("Using Cloudinary credentials:", { 
       cloudName, 
-      apiKey,
-      // Don't log the full secret, just the first few chars to verify it's loaded
-      secretFirstChars: apiSecret ? apiSecret.substring(0, 3) + '***' : 'NOT_SET'
+      apiKey: apiKey.substring(0, 5) + '...',
+      secretAvailable: !!apiSecret
     });
 
     // Create a unique public ID for the file
