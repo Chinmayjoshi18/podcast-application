@@ -180,8 +180,9 @@ async function uploadFileToCloudinary(
   const isAudio = folder === 'podcast-audio';
   const resourceType = isAudio ? 'video' : 'auto'; // Cloudinary uses 'video' for audio files
   
+  // For signed uploads, we'll get a signature from our server
   try {
-    console.log(`Requesting signed upload URL for ${filename} in folder ${folder}`);
+    console.log(`Requesting upload signature for ${file.name} in folder ${folder}`);
     
     // First, request a signed upload URL from our backend
     const signatureResponse = await fetch('/api/uploads/signature', {
@@ -212,8 +213,10 @@ async function uploadFileToCloudinary(
     
     const signatureData = await signatureResponse.json();
     console.log('Received signature data:', { 
-      ...signatureData,
-      // Don't log the signature itself for security
+      cloudName: signatureData.cloudName,
+      publicId: signatureData.publicId,
+      timestamp: signatureData.timestamp,
+      hasApiKey: !!signatureData.apiKey,
       hasSignature: !!signatureData.signature 
     });
     
@@ -228,24 +231,22 @@ async function uploadFileToCloudinary(
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       
-      // Create form data with the file and signature parameters
+      // Create form data with the EXACT SAME parameters that were signed
+      // The order doesn't matter for the form data, but the parameters must match
       const formData = new FormData();
       formData.append('file', file);
       formData.append('api_key', apiKey);
       formData.append('timestamp', timestamp.toString());
       formData.append('signature', signature);
       formData.append('folder', folder);
+      formData.append('public_id', publicId);
       
-      // Use the provided public_id from the server
-      if (publicId) {
-        formData.append('public_id', publicId);
-      } else {
-        formData.append('public_id', `podcast_${Date.now()}`);
-      }
-      
-      // Add additional parameters for audio files
+      // Add resource_type parameter for audio files
+      // This must be done in the URL not in the form data
       if (isAudio) {
-        formData.append('resource_type', 'video');
+        // We don't add resource_type to formData - it goes in the URL
+        // formData.append('resource_type', 'video'); 
+        console.log('Audio file detected, using resource_type=video');
       }
       
       // Track upload progress
@@ -310,9 +311,9 @@ async function uploadFileToCloudinary(
         reject(new Error('Upload timed out after 30 minutes'));
       };
       
-      // Construct the upload URL
+      // Construct the upload URL - very important that resourceType is in the URL for audio files
       const uploadUrl = `https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/upload`;
-      console.log(`Uploading to ${uploadUrl}`);
+      console.log(`Uploading to ${uploadUrl} with signed parameters`);
       
       // Add a fallback progress timer
       let currentProgress = 2;
@@ -329,7 +330,15 @@ async function uploadFileToCloudinary(
       try {
         xhr.open('POST', uploadUrl);
         xhr.send(formData);
-        console.log('XHR request sent to Cloudinary with signed parameters');
+        console.log('XHR request sent to Cloudinary with parameters:', {
+          url: uploadUrl,
+          hasFile: !!file,
+          apiKey: `${apiKey.substring(0, 3)}...`,
+          timestamp,
+          folder,
+          publicId,
+          resourceType
+        });
       } catch (error) {
         clearInterval(progressTimer);
         console.error('Error initiating upload:', error);

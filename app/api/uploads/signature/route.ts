@@ -47,34 +47,46 @@ export async function POST(req: NextRequest) {
     const timestamp = Math.round(new Date().getTime() / 1000);
 
     // Define required environment variables
-    // For testing purposes, I've hardcoded an API key and secret - REPLACE THESE WITH YOUR ACTUAL VALUES
-    const apiSecret = process.env.CLOUDINARY_API_SECRET || "yBXnwXjzGsrouGygWQ9S1y3rfzg";
-    const apiKey = process.env.CLOUDINARY_API_KEY || "864259289886747";
+    const apiSecret = process.env.CLOUDINARY_API_SECRET || "";
+    const apiKey = process.env.CLOUDINARY_API_KEY || "";
     const cloudName = process.env.CLOUDINARY_CLOUD_NAME || "dbrso3dnr";
+
+    // Ensure we have the required API credentials
+    if (!apiSecret || !apiKey) {
+      console.error('Missing Cloudinary API credentials');
+      return NextResponse.json(
+        { error: 'Server configuration error - missing Cloudinary credentials' },
+        { status: 500 }
+      );
+    }
 
     console.log("Using Cloudinary credentials:", { 
       cloudName, 
       apiKey,
       // Don't log the full secret, just the first few chars to verify it's loaded
-      secretFirstChars: apiSecret.substring(0, 4) 
+      secretFirstChars: apiSecret ? apiSecret.substring(0, 3) + '***' : 'NOT_SET'
     });
 
-    // Create parameters object that will be used for the upload
+    // Create a unique public ID for the file
     const publicId = `podcast_${Date.now()}`;
+    
+    // Parameters to include in signature
+    // These MUST match exactly what will be sent to Cloudinary
     const params: Record<string, string> = {
       timestamp: timestamp.toString(),
       folder,
       public_id: publicId,
+      api_key: apiKey,
     };
 
-    // Add additional parameters for audio files
+    // Add audio-specific parameters if needed
     if (isAudio) {
-      params.resource_type = 'video';
+      params.resource_type = 'video';  // Audio files use the 'video' resource type in Cloudinary
     }
 
-    // Build the string to sign exactly per Cloudinary's requirements
-    // This must be in format: param1=value1&param2=value2&...&timestamp=1234567890
-    // The params MUST be sorted alphabetically by key
+    // Generate the signature string in the exact format Cloudinary expects
+    // Format: param1=value1&param2=value2...paramN=valueN+API_SECRET
+    // Parameters must be sorted alphabetically by key
     let signatureString = '';
     Object.keys(params)
       .sort()
@@ -85,32 +97,33 @@ export async function POST(req: NextRequest) {
       });
 
     // Remove the trailing '&'
-    signatureString = signatureString.substring(0, signatureString.length - 1);
+    signatureString = signatureString.slice(0, -1);
 
-    console.log('String to sign:', signatureString);
-
-    // Generate the signature using SHA-1 hash of the string + API secret
+    // Generate the signature
+    // Important: The API secret is appended to the string, not included with & separator
     const signature = crypto
       .createHash('sha1')
       .update(signatureString + apiSecret)
       .digest('hex');
-      
-    console.log('Generated signature:', signature);
 
-    // Return the signature and other required parameters
+    console.log('Generated signature for params:', {
+      signatureParams: Object.keys(params).sort(),
+      signature: signature.substring(0, 10) + '...' // Only log part of the signature for security
+    });
+
+    // Return the signature and parameters needed by the client
     return NextResponse.json({
       signature,
       timestamp,
       cloudName,
       apiKey,
       publicId,
-      stringToSign: signatureString, // Include this for debugging
-      success: true,
+      success: true
     });
   } catch (error) {
     console.error('Error generating upload signature:', error);
     return NextResponse.json(
-      { error: 'Failed to generate signature' },
+      { error: 'Failed to generate signature: ' + (error instanceof Error ? error.message : 'Unknown error') },
       { status: 500 }
     );
   }
