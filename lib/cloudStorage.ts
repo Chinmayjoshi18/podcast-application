@@ -41,20 +41,71 @@ export const uploadAudioFile = async (
   uploadProgressMap.set(uploadId, 0);
 
   try {
-    console.log(`Starting upload for ${file.name} (${Math.round(file.size / 1024)}KB)`);
+    console.log(`Starting upload for ${file.name} (${Math.round(file.size / (1024 * 1024))}MB)`);
     
-    // We'll now use the more reliable uploadLargeFile function from storage.ts
-    // This ensures we're using a consistent upload method
-    // Import the function here to avoid circular dependencies
-    const { uploadLargeFile } = await import('./storage');
+    // For files under 10MB, use the simple upload method
+    if (file.size < 10 * 1024 * 1024) {
+      console.log(`Small file detected (${Math.round(file.size / (1024 * 1024))}MB), using direct upload`);
+      return await simpleUpload(file, folder, filename, onProgress);
+    }
     
-    // Call the uploadLargeFile function
-    const url = await uploadLargeFile(
-      file,
-      onProgress,
-      folder === 'podcast-audio' ? 'audio' : 'image',
-      folder
-    );
+    // For larger files, use the direct upload to our server API
+    // which handles the file more reliably
+    console.log(`Large file detected (${Math.round(file.size / (1024 * 1024))}MB), using server upload`);
+    
+    // Create form data for the upload
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('fileType', folder === 'podcast-audio' ? 'audio' : 'image');
+    formData.append('folder', folder);
+    
+    // Use XMLHttpRequest for better progress tracking
+    const url = await new Promise<string>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      
+      // Track upload progress
+      xhr.upload.addEventListener('progress', (event) => {
+        if (event.lengthComputable) {
+          // Cap progress at 95% until we get server confirmation
+          const progress = Math.min(Math.round((event.loaded / event.total) * 100), 95);
+          onProgress(progress);
+          uploadProgressMap.set(uploadId, progress);
+          console.log(`Upload progress: ${progress}%`);
+        }
+      });
+      
+      xhr.addEventListener('load', () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const response = JSON.parse(xhr.responseText);
+            if (response.success && response.url) {
+              // Set to 100% when complete
+              onProgress(100);
+              uploadProgressMap.set(uploadId, 100);
+              resolve(response.url);
+            } else {
+              reject(new Error(response.error || 'Upload failed with unknown error'));
+            }
+          } catch (error) {
+            reject(new Error(`Failed to parse upload response: ${error.message}`));
+          }
+        } else {
+          reject(new Error(`Upload failed with status: ${xhr.status}`));
+        }
+      });
+      
+      xhr.addEventListener('error', () => {
+        reject(new Error('Upload failed due to network error'));
+      });
+      
+      xhr.addEventListener('abort', () => {
+        reject(new Error('Upload was aborted'));
+      });
+      
+      // Open and send the request
+      xhr.open('POST', '/api/upload');
+      xhr.send(formData);
+    });
     
     console.log(`Upload completed successfully: ${url}`);
     

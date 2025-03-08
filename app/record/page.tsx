@@ -24,6 +24,23 @@ const ClientAudioRecorder = dynamic(
   { ssr: false }
 );
 
+const UploadProgressBar = ({ progress }: { progress: number }) => {
+  return (
+    <div className="my-4">
+      <div className="flex justify-between mb-1">
+        <span className="text-base font-medium">Uploading...</span>
+        <span className="text-base font-medium">{progress}%</span>
+      </div>
+      <div className="w-full bg-gray-700 rounded-full h-2.5 overflow-hidden">
+        <div 
+          className="bg-primary-600 h-2.5 rounded-full transition-all duration-300 ease-in-out" 
+          style={{ width: `${progress}%` }}
+        ></div>
+      </div>
+    </div>
+  );
+};
+
 const RecordPage = () => {
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -45,7 +62,7 @@ const RecordPage = () => {
   const [charCount, setCharCount] = useState(0);
   const MAX_CHARS = 280; // Twitter-like character limit
   const [uploadProgress, setUploadProgress] = useState(0);
-  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'processing' | 'error'>('idle');
+  const [uploadStatus, setUploadStatus] = useState<'idle' | 'uploading' | 'processing' | 'complete' | 'error'>('idle');
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -207,6 +224,7 @@ const RecordPage = () => {
 
     setIsSubmitting(true);
     setUploadProgress(0);
+    setUploadStatus('uploading');
 
     try {
       // Get the audio file (either recorded or uploaded)
@@ -293,13 +311,18 @@ const RecordPage = () => {
       
       console.log('Saving podcast metadata to database:', newPodcast);
       
+      // Update status when processing
+      setUploadStatus('processing');
+      
       // Save the podcast metadata to the database
       const savedPodcast = await addPodcast(newPodcast);
       
+      setUploadStatus('complete');
       console.log('Podcast saved successfully:', savedPodcast);
       toast.success('Podcast published successfully!');
       router.push('/dashboard');
     } catch (error) {
+      setUploadStatus('error');
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('Error uploading podcast:', error);
       toast.error(`Failed to publish podcast: ${errorMessage}`);
@@ -557,20 +580,7 @@ const RecordPage = () => {
 
             {/* Upload progress */}
             {isSubmitting && (
-              <div className="mb-6">
-                <div className="flex justify-between items-center mb-1">
-                  <span className="text-sm font-medium text-white">
-                    {uploadStatus === 'processing' ? 'Processing...' : 'Uploading...'}
-                  </span>
-                  <span className="text-sm font-medium text-white">{Math.round(uploadProgress)}%</span>
-                </div>
-                <div className="w-full bg-gray-700 rounded-full h-2.5">
-                  <div 
-                    className="bg-primary-600 h-2.5 rounded-full transition-all duration-300" 
-                    style={{ width: `${uploadProgress}%` }}
-                  ></div>
-                </div>
-              </div>
+              <UploadProgressBar progress={uploadProgress} />
             )}
 
             {/* Submit button */}
