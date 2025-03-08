@@ -54,7 +54,6 @@ const Navigation = () => {
     ...(isLoggedIn
       ? [
           { name: 'Dashboard', href: '/dashboard' },
-          { name: 'Record', href: '/record' },
         ]
       : []),
   ];
@@ -93,12 +92,6 @@ const Navigation = () => {
                   {link.name}
                 </Link>
               ))}
-              <Link
-                href="/search"
-                className="p-2 rounded-md text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400"
-              >
-                <FaSearch className="h-5 w-5" />
-              </Link>
             </div>
           </div>
 
@@ -136,12 +129,6 @@ const Navigation = () => {
                       <div className="px-4 py-2 text-xs text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-700">
                         {session?.user?.name || 'User'}
                       </div>
-                      <Link
-                        href="/profile"
-                        className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                      >
-                        Profile
-                      </Link>
                       <Link
                         href="/settings"
                         className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
@@ -208,12 +195,6 @@ const Navigation = () => {
               {link.name}
             </Link>
           ))}
-          <Link
-            href="/search"
-            className="block px-3 py-2 rounded-md text-base font-medium text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400"
-          >
-            Search
-          </Link>
           {isLoggedIn ? (
             <>
               <Link
@@ -221,12 +202,6 @@ const Navigation = () => {
                 className="block px-3 py-2 rounded-md text-base font-medium text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400"
               >
                 Notifications {notificationCount > 0 && `(${notificationCount})`}
-              </Link>
-              <Link
-                href="/profile"
-                className="block px-3 py-2 rounded-md text-base font-medium text-gray-700 dark:text-gray-300 hover:text-primary-600 dark:hover:text-primary-400"
-              >
-                Profile
               </Link>
               <Link
                 href="/settings"

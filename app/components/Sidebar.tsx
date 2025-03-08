@@ -45,14 +45,9 @@ const Sidebar = () => {
 
   const sidebarLinks = [
     { name: 'Home', href: '/', icon: <FaHome className="h-6 w-6" /> },
-    { name: 'Search', href: '/search', icon: <FaSearch className="h-6 w-6" /> },
     { name: 'Messages', href: '/messages', icon: <FaEnvelope className="h-6 w-6" /> },
     { name: 'Explore', href: '/explore', icon: <FaCompass className="h-6 w-6" /> },
     { name: 'Saved', href: '/saved', icon: <FaBookmark className="h-6 w-6" /> },
-    { name: 'Profile', href: '/profile', icon: <FaUser className="h-6 w-6" /> },
-    { name: 'Create', href: '/create', icon: <FaPlus className="h-6 w-6" /> },
-    { name: 'Listen', href: '/player', icon: <FaHeadphones className="h-6 w-6" /> },
-    { name: 'Record', href: '/record', icon: <FaMicrophone className="h-6 w-6" />, count: notificationCount },
     ...(isLoggedIn
       ? [
           { name: 'Notifications', href: '/notifications', icon: <FaBell className="h-6 w-6" />, count: notificationCount },
@@ -101,19 +96,6 @@ const Sidebar = () => {
             ))}
           </ul>
         </nav>
-
-        {/* Record Button */}
-        {isLoggedIn && (
-          <div className="px-3 mb-6">
-            <Link
-              href="/record"
-              className="flex items-center justify-center xl:justify-start bg-primary-500 hover:bg-primary-600 text-white font-bold rounded-full px-5 py-3 w-full transition-colors"
-            >
-              <FaPlus className="h-5 w-5 xl:hidden" />
-              <span className="hidden xl:block">Record Podcast</span>
-            </Link>
-          </div>
-        )}
       </div>
 
       {/* User Profile Section */}
