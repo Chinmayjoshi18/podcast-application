@@ -41,15 +41,31 @@ export const uploadAudioFile = async (
   uploadProgressMap.set(uploadId, 0);
 
   try {
-    // For smaller files (under 10MB), use simple upload
-    if (file.size < 10 * 1024 * 1024) {
-      return await simpleUpload(file, folder, filename, onProgress);
+    console.log(`Starting upload for ${file.name} (${Math.round(file.size / 1024)}KB)`);
+    
+    // We'll now use the more reliable uploadLargeFile function from storage.ts
+    // This ensures we're using a consistent upload method
+    // Import the function here to avoid circular dependencies
+    const { uploadLargeFile } = await import('./storage');
+    
+    // Call the uploadLargeFile function
+    const url = await uploadLargeFile(
+      file,
+      onProgress,
+      folder === 'podcast-audio' ? 'audio' : 'image',
+      folder
+    );
+    
+    console.log(`Upload completed successfully: ${url}`);
+    
+    // Validate URL before returning
+    if (!url || !url.startsWith('http')) {
+      throw new Error(`Invalid URL returned from upload: ${url}`);
     }
-
-    // For larger files, use chunked upload
-    return await chunkedUpload(file, folder, filename, uploadId, onProgress);
+    
+    return url;
   } catch (error) {
-    console.error('Error uploading file:', error);
+    console.error(`Error uploading file ${file.name}:`, error);
     // Clean up progress tracking
     uploadProgressMap.delete(uploadId);
     throw error;

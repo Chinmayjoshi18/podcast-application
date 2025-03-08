@@ -93,12 +93,41 @@ export async function POST(request) {
     }
     
     const userId = session.user.id;
-    const { title, description, audioUrl, coverImage, duration, isPublic = true, tags = [] } = await request.json();
+    // Parse the request body
+    const body = await request.json().catch(e => {
+      console.error('Error parsing request body:', e);
+      return null;
+    });
+    
+    if (!body) {
+      return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
+    }
+    
+    const { title, description, audioUrl, coverImage, duration, isPublic = true, tags = [] } = body;
+    
+    console.log('Creating podcast with data:', {
+      title,
+      description: description?.substring(0, 30) + (description?.length > 30 ? '...' : ''),
+      audioUrl: audioUrl?.substring(0, 30) + (audioUrl?.length > 30 ? '...' : ''),
+      coverImage: coverImage?.substring(0, 30) + (coverImage?.length > 30 ? '...' : ''),
+      duration,
+      isPublic,
+      userId,
+      tagsCount: tags?.length || 0
+    });
     
     // Validate required fields
-    if (!title || !audioUrl) {
+    if (!title) {
+      return NextResponse.json({ error: 'Title is required' }, { status: 400 });
+    }
+    
+    if (!audioUrl) {
+      return NextResponse.json({ error: 'Audio URL is required' }, { status: 400 });
+    }
+    
+    if (!audioUrl.startsWith('http')) {
       return NextResponse.json(
-        { error: 'Title and audio URL are required' },
+        { error: 'Invalid audio URL format. Must be a valid URL.' },
         { status: 400 }
       );
     }
@@ -107,18 +136,18 @@ export async function POST(request) {
     const podcast = await prisma.podcast.create({
       data: {
         title,
-        description,
+        description: description || '',
         audioUrl,
-        coverImage,
-        duration,
-        isPublic,
+        coverImage: coverImage || null,
+        duration: duration ? Number(duration) : null,
+        isPublic: Boolean(isPublic),
         userId,
-        tags: {
+        tags: Array.isArray(tags) && tags.length > 0 ? {
           connectOrCreate: tags.map(tag => ({
-            where: { name: tag },
-            create: { name: tag },
+            where: { name: String(tag) },
+            create: { name: String(tag) },
           })),
-        },
+        } : undefined,
       },
       include: {
         user: {
@@ -132,6 +161,8 @@ export async function POST(request) {
       },
     });
     
+    console.log('Podcast created successfully with ID:', podcast.id);
+    
     return NextResponse.json({
       ...podcast,
       likes: 0,
@@ -141,6 +172,9 @@ export async function POST(request) {
     });
   } catch (error) {
     console.error('Error creating podcast:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ 
+      error: 'Failed to create podcast',
+      details: error.message
+    }, { status: 500 });
   }
 } 
