@@ -45,74 +45,33 @@ export const uploadAudioFile = async (
     console.log(`Starting upload for ${file.name} (${fileSizeMB}MB)`);
     
     // For very large files (over 50MB), special handling is required
-    const isLargeFile = file.size > 50 * 1024 * 1024;
+    const isLargeFile = file.size > 25 * 1024 * 1024; // Reduced to 25MB since we have credentials
     
     if (isLargeFile) {
       console.log(`Large file detected (${fileSizeMB}MB), using direct Cloudinary upload`);
       
-      // First, check with our server for upload parameters
-      console.log('Requesting upload parameters from server...');
+      // Hard-coded Cloudinary information based on provided credentials
+      const cloudName = "dbrso3dnr"; 
+      const uploadPreset = "podcast_uploads"; // Default unsigned upload preset - make sure this exists in Cloudinary
       
-      // Create a fixed set of parameters if server is unreachable
-      const fallbackParams = {
-        cloudName: process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || '',
-        uploadPreset: process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET || 'podcast_uploads',
-        folder: folder,
-        resourceType: folder === 'podcast-audio' ? 'video' : 'auto'
-      };
+      console.log('Cloudinary config:', { cloudName, uploadPreset });
       
-      // Log what we're using for debugging
-      console.log('Using upload preset:', process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET);
-      console.log('Using cloud name:', process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME);
+      // Start direct upload to Cloudinary
+      onProgress(1); // Show initial progress
       
-      try {
-        const response = await fetch('/api/upload', {
-          method: 'POST',
-          body: createFormData(file, folder),
-        });
-        
-        if (!response.ok) {
-          console.warn(`Server rejected upload request with status ${response.status}, using fallback`);
-          // Use fallback for direct upload instead of failing
-          onProgress(1); // Show a small amount of progress
-          return await directCloudinaryUpload(file, fallbackParams, onProgress);
-        }
-        
-        const data = await response.json();
-        console.log('Server response:', data);
-        
-        // If server returns direct upload instructions
-        if (data.success && data.directUpload) {
-          console.log('Received direct upload parameters from server');
-          onProgress(1); // Show a small amount of progress
-          
-          // Validate required fields
-          const params = data.uploadParams;
-          if (!params.cloudName || !params.uploadPreset) {
-            console.warn('Missing required upload parameters, using fallback');
-            return await directCloudinaryUpload(file, fallbackParams, onProgress);
-          }
-          
-          // Use Cloudinary's direct upload
-          return await directCloudinaryUpload(file, params, onProgress);
-        } else if (data.success && data.url) {
-          // If server handled the upload directly
-          onProgress(100);
-          return data.url;
-        } else {
-          console.warn('Server returned unexpected response, using fallback');
-          onProgress(1); // Show a small amount of progress
-          return await directCloudinaryUpload(file, fallbackParams, onProgress);
-        }
-      } catch (error) {
-        console.error('Error communicating with server:', error);
-        console.log('Using fallback upload parameters');
-        onProgress(1); // Show a small amount of progress
-        return await directCloudinaryUpload(file, fallbackParams, onProgress);
-      }
+      return await directCloudinaryUpload(
+        file, 
+        {
+          cloudName: cloudName,
+          uploadPreset: uploadPreset, 
+          folder: folder,
+          resourceType: folder === 'podcast-audio' ? 'video' : 'auto'
+        },
+        onProgress
+      );
     }
     
-    // For smaller files (under 50MB), use server-side upload
+    // For smaller files (under 25MB), use server-side upload
     console.log(`Standard file size (${fileSizeMB}MB), using server upload`);
     
     // Use XMLHttpRequest for better progress tracking
@@ -205,30 +164,33 @@ async function directCloudinaryUpload(
 ): Promise<string> {
   console.log('Starting direct Cloudinary upload with params:', uploadParams);
   
-  // Ensure we have the required parameters
+  // Double-check we have the required parameters
   if (!uploadParams.cloudName || !uploadParams.uploadPreset) {
     console.error('Missing required Cloudinary parameters');
-    throw new Error('Missing required Cloudinary parameters');
+    throw new Error('Missing required Cloudinary parameters for direct upload');
   }
   
+  const isAudio = uploadParams.resourceType === 'video';
+  if (isAudio) {
+    console.log('Configuring for audio file upload (using video resource type in Cloudinary)');
+  }
+  
+  // Create upload endpoint URL - this is critical
+  // For audio files, we need to use /video/upload not /upload
+  const uploadUrl = `https://api.cloudinary.com/v1_1/${uploadParams.cloudName}/${uploadParams.resourceType}/upload`;
+  console.log('Using Cloudinary upload URL:', uploadUrl);
+  
+  // Create a new FormData instance for the upload
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('upload_preset', uploadParams.uploadPreset);
+  formData.append('folder', uploadParams.folder);
+  
+  // Add some metadata to help with debugging
+  formData.append('context', 'source=podcast_app|env=production');
+  formData.append('public_id', `${Date.now()}_${file.name.replace(/\.[^/.]+$/, "")}`);
+  
   return new Promise<string>((resolve, reject) => {
-    // Create a new FormData instance for the upload
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('upload_preset', uploadParams.uploadPreset);
-    formData.append('folder', uploadParams.folder);
-    
-    // For audio files, use the right resource type
-    const isAudio = uploadParams.resourceType === 'video';
-    if (isAudio) {
-      // Audio files are uploaded as 'video' type in Cloudinary
-      console.log('Configuring for audio file upload (using video resource type)');
-    }
-    
-    // Construct the Cloudinary upload URL with the correct resource type
-    const uploadUrl = `https://api.cloudinary.com/v1_1/${uploadParams.cloudName}/${uploadParams.resourceType}/upload`;
-    console.log('Using Cloudinary upload URL:', uploadUrl);
-    
     // Use XMLHttpRequest for better progress tracking
     const xhr = new XMLHttpRequest();
     
@@ -241,12 +203,16 @@ async function directCloudinaryUpload(
         const progress = Math.min(Math.round((event.loaded / event.total) * 100), 95);
         onProgress(progress);
         
-        // Don't log every tiny change, only log when progress changes by at least 5%
+        // Log progress at meaningful intervals for debugging
         if (progress >= lastLoggedProgress + 5 || progress === 95) {
           console.log(`Direct upload progress: ${progress}%`);
           lastLoggedProgress = progress;
         }
       }
+    });
+    
+    xhr.addEventListener('readystatechange', () => {
+      console.log(`XHR ready state changed: ${xhr.readyState}`);
     });
     
     xhr.addEventListener('load', () => {
@@ -255,10 +221,13 @@ async function directCloudinaryUpload(
         try {
           const response = JSON.parse(xhr.responseText);
           console.log('Direct upload complete, received response from Cloudinary:', response);
-          onProgress(100);
+          
+          // Verify we received a secure_url
           if (response.secure_url) {
+            onProgress(100);
             resolve(response.secure_url);
           } else {
+            console.error('Cloudinary response missing secure_url:', response);
             reject(new Error('Cloudinary response missing secure_url'));
           }
         } catch (error) {
@@ -267,9 +236,15 @@ async function directCloudinaryUpload(
           reject(new Error(`Failed to parse Cloudinary response: ${error.message}`));
         }
       } else {
-        console.error('Cloudinary upload failed with status:', xhr.status);
-        console.error('Response text:', xhr.responseText);
-        reject(new Error(`Cloudinary upload failed with status: ${xhr.status}`));
+        try {
+          const errorResponse = JSON.parse(xhr.responseText);
+          console.error('Cloudinary upload failed with error:', errorResponse);
+          reject(new Error(`Cloudinary upload failed: ${errorResponse.error?.message || 'Unknown error'}`));
+        } catch (e) {
+          console.error('Cloudinary upload failed with status:', xhr.status);
+          console.error('Response text:', xhr.responseText);
+          reject(new Error(`Cloudinary upload failed with status: ${xhr.status}`));
+        }
       }
     });
     
@@ -290,16 +265,15 @@ async function directCloudinaryUpload(
       reject(new Error('Upload timed out after 30 minutes'));
     };
     
-    console.log('Opening XHR request to Cloudinary...');
-    xhr.open('POST', uploadUrl);
-    
-    console.log('Sending file to Cloudinary:', {
-      fileName: file.name,
-      fileSize: `${Math.round((file.size / (1024 * 1024)) * 100) / 100}MB`,
-      fileType: file.type
-    });
-    
     try {
+      xhr.open('POST', uploadUrl);
+      
+      console.log('Sending file to Cloudinary:', {
+        fileName: file.name,
+        fileSize: `${Math.round((file.size / (1024 * 1024)) * 100) / 100}MB`,
+        fileType: file.type
+      });
+      
       xhr.send(formData);
       console.log('XHR request sent successfully');
     } catch (error) {

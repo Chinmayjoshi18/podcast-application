@@ -3,11 +3,11 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { v2 as cloudinary } from 'cloudinary';
 
-// Configure Cloudinary with environment variables
+// Configure Cloudinary with environment variables from the server
 cloudinary.config({
-  cloud_name: process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
+  cloud_name: "dbrso3dnr",
+  api_key: "583278933339254",
+  api_secret: "nqTz-rpPOodt5hbCCejYjLrcO8A"
 });
 
 // This configuration explicitly disables Next.js's default body parser
@@ -48,14 +48,14 @@ export async function POST(request: NextRequest) {
 
     // For very large files, use direct unsigned upload to Cloudinary
     // This bypasses our server size limits
-    if (file.size > 50 * 1024 * 1024) {
+    if (file.size > 25 * 1024 * 1024) {
       return NextResponse.json({
         success: true,
         // Return instructions for client-side upload
         directUpload: true,
         uploadParams: {
-          cloudName: process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
-          uploadPreset: process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET,
+          cloudName: "dbrso3dnr",
+          uploadPreset: "podcast_uploads",
           folder: folder,
           resourceType: isAudio ? 'video' : 'auto',
         }
@@ -74,6 +74,7 @@ export async function POST(request: NextRequest) {
         resource_type: isAudio ? 'video' : 'auto', // Cloudinary uses 'video' for audio
         use_filename: true,
         unique_filename: true,
+        public_id: `${Date.now()}_${file.name.replace(/\.[^/.]+$/, "")}`,
       };
       
       // For audio files, add optimized settings
