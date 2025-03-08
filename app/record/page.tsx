@@ -1,15 +1,20 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
-import { useSession } from 'next-auth/react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import dynamic from 'next/dynamic';
-import Image from 'next/image';
+import { useSession } from 'next-auth/react';
 import toast from 'react-hot-toast';
 import { FaMicrophone, FaUpload, FaStop, FaPlay, FaPause, FaTrash, FaSave, FaGlobe, FaLock, FaArrowLeft, FaImage, FaExclamationTriangle } from 'react-icons/fa';
 import { addPodcast } from '@/lib/storage';
-import { uploadAudioFile, getUploadProgress, startFileUpload } from '@/lib/cloudStorage';
+import { uploadAudioFile, getUploadProgress, startFileUpload, isFileUploading, isFileUploaded, getUploadedFileUrl } from '@/lib/cloudStorage';
 import Link from 'next/link';
+import { MdMic, MdStop, MdPlayArrow, MdPause, MdFileUpload, MdImage } from 'react-icons/md';
+import axios from 'axios';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import dynamic from 'next/dynamic';
+import Image from 'next/image';
 
 // Import AudioRecorder dynamically with SSR disabled
 const ClientAudioRecorder = dynamic(
@@ -127,32 +132,66 @@ const RecordPage = () => {
     
     // Start uploading the file immediately in the background
     toast.success('Starting file upload in the background...');
+    setUploadStatus('uploading');
+    setUploadProgress(1); // Show initial progress
+    
     try {
-      // Import the startFileUpload function if it's not already imported
-      import('@/lib/cloudStorage').then(({ startFileUpload }) => {
-        // Start the background upload process
+      // Start the background upload process
+      const fileId = `${file.name}_${file.lastModified}`;
+      
+      // Only start the upload if it's not already uploading or uploaded
+      if (!isFileUploading(fileId) && !isFileUploaded(fileId)) {
         startFileUpload(file, 'podcast-audio', (progress) => {
           console.log(`Background upload progress: ${progress}%`);
-          // Optionally update some UI element to show background progress
+          // Update UI to show progress
+          setUploadProgress(progress);
         }).then((cloudinaryUrl) => {
           console.log('Background upload complete:', cloudinaryUrl);
           toast.success('File upload completed in the background!');
           // Store the URL for later use when publishing
           setUploadedFileUrl(cloudinaryUrl);
+          setUploadStatus('complete');
+          setUploadProgress(100);
         }).catch((error) => {
           console.error('Background upload failed:', error);
           toast.error(`Background upload failed: ${error.message}`);
+          setUploadStatus('error');
         });
-      });
+      } else if (isFileUploaded(fileId)) {
+        // If already uploaded, get the URL
+        const url = getUploadedFileUrl(fileId);
+        if (url) {
+          console.log('File already uploaded, using cached URL:', url);
+          toast.success('Using already uploaded file!');
+          setUploadedFileUrl(url);
+          setUploadStatus('complete');
+          setUploadProgress(100);
+        }
+      } else {
+        // If already uploading, just track the progress
+        console.log('File already uploading, tracking progress');
+        toast.success('File is already uploading, tracking progress...');
+        
+        // Start a progress tracking interval
+        const progressInterval = setInterval(() => {
+          const progress = getUploadProgress(fileId);
+          setUploadProgress(progress);
+          console.log(`Tracking upload progress: ${progress}%`);
+          
+          if (progress >= 100) {
+            clearInterval(progressInterval);
+            setUploadStatus('complete');
+          }
+        }, 500);
+      }
       
-      // Convert to base64 for storage
+      // Convert to base64 for storage (only for preview purposes)
       const base64 = await blobToBase64(file);
       setAudioBase64(base64);
-      
-      // No need for success toast here - we'll show it when background upload completes
     } catch (error) {
       console.error('Error handling file change:', error);
       toast.error('Error processing the file');
+      setUploadStatus('error');
     }
   };
 
@@ -251,8 +290,12 @@ const RecordPage = () => {
     }
 
     setIsSubmitting(true);
-    setUploadProgress(0);
-    setUploadStatus('uploading');
+    
+    // If we're not already showing upload progress, initialize it
+    if (uploadStatus === 'idle') {
+      setUploadProgress(0);
+      setUploadStatus('uploading');
+    }
 
     try {
       // Get the audio file (either recorded or uploaded)
@@ -287,89 +330,114 @@ const RecordPage = () => {
         );
       }
       
-      // Upload the audio file with progress tracking
-      console.log('Starting audio file upload...');
+      // For audio file, check if we already have an uploaded URL
+      let audioFileUrl;
       
-      // Check if we already have an uploaded file URL from the background upload
-      let audioFileUploadPromise;
-      if (uploadedFileUrl) {
+      if (uploadedFileUrl && uploadStatus === 'complete') {
+        // If we already have a URL from the background upload, use it
         console.log('Using pre-uploaded audio file URL:', uploadedFileUrl);
-        // Skip uploading if we already have the URL
-        audioFileUploadPromise = Promise.resolve(uploadedFileUrl);
-        // Still show some progress to the user
+        audioFileUrl = uploadedFileUrl;
+        
+        // Make sure progress shows complete
         setUploadProgress(100);
         toast.success('Using already uploaded file!');
       } else {
-        // Otherwise, upload the file now
-        audioFileUploadPromise = uploadAudioFile(
-          audioFile,
-          'podcast-audio',
-          `podcast_${Date.now()}_${audioFile.name}`,
-          (progress) => {
-            setUploadProgress(progress);
-            console.log(`Audio upload progress: ${progress}%`);
+        // Check if this file has already been uploaded based on its ID
+        const fileId = `${audioFile.name}_${audioFile.lastModified}`;
+        if (isFileUploaded(fileId)) {
+          const cachedUrl = getUploadedFileUrl(fileId);
+          if (cachedUrl) {
+            console.log('Using cached audio file URL:', cachedUrl);
+            audioFileUrl = cachedUrl;
+            setUploadProgress(100);
+            toast.success('Using already uploaded file!');
+          } else {
+            // Upload the file if not already uploaded
+            console.log('Starting audio file upload for publish...');
+            audioFileUrl = await uploadAudioFile(
+              audioFile,
+              'podcast-audio',
+              `podcast_${Date.now()}_${audioFile.name}`,
+              (progress) => {
+                setUploadProgress(progress);
+                console.log(`Audio upload progress: ${progress}%`);
+              }
+            );
           }
-        );
-      }
-      
-      // Wait for both uploads to complete
-      const [audioUrl, coverImageResult] = await Promise.all([
-        audioFileUploadPromise.catch(err => {
-          console.error('Audio upload failed:', err);
-          throw new Error(`Audio upload failed: ${err.message || 'Unknown error'}`);
-        }),
-        coverImageUploadPromise.catch(err => {
-          console.error('Cover image upload failed:', err);
-          // Don't fail the whole process if just the cover image fails
-          return '';
-        })
-      ]);
-      
-      console.log('Upload completed with URLs:', { audioUrl, coverImageUrl: coverImageResult });
-      
-      if (coverImageResult) {
-        coverImageUrl = coverImageResult;
-      } else {
-        // Use a placeholder image based on the first letter of the title
-        coverImageUrl = `https://placehold.co/400x400/5f33e1/ffffff?text=${encodeURIComponent(formData.title.substring(0, 1).toUpperCase())}`;
-      }
-      
-      // Create podcast object with the URLs
-      const newPodcast = {
-        title: formData.title,
-        description: formData.description,
-        audioUrl: audioUrl,
-        coverImage: coverImageUrl,
-        duration: audioRef.current?.duration || 0,
-        isPublic: formData.isPublic,
-        userId: (session.user as any).id || session.user.email || 'anonymous',
-        user: {
-          id: (session.user as any).id || session.user.email || 'anonymous',
-          name: session.user.name || 'Anonymous',
-          image: session.user.image || `https://placehold.co/100/5f33e1/ffffff?text=${(session.user.name || 'A')[0].toUpperCase()}`
+        } else if (isFileUploading(fileId)) {
+          // If file is currently uploading, wait for it to complete
+          console.log('File is currently uploading, waiting for completion...');
+          toast.loading('Waiting for upload to complete...');
+          
+          // Poll until upload completes
+          while (!isFileUploaded(fileId)) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+            const progress = getUploadProgress(fileId);
+            setUploadProgress(progress);
+          }
+          
+          // Once complete, get the URL
+          const cachedUrl = getUploadedFileUrl(fileId);
+          if (cachedUrl) {
+            audioFileUrl = cachedUrl;
+            toast.success('Upload completed!');
+          } else {
+            // Fallback to regular upload if something went wrong
+            audioFileUrl = await uploadAudioFile(
+              audioFile,
+              'podcast-audio',
+              `podcast_${Date.now()}_${audioFile.name}`,
+              (progress) => {
+                setUploadProgress(progress);
+                console.log(`Audio upload progress: ${progress}%`);
+              }
+            );
+          }
+        } else {
+          // Upload the file if not already uploading or uploaded
+          console.log('Starting audio file upload for publish...');
+          audioFileUrl = await uploadAudioFile(
+            audioFile,
+            'podcast-audio',
+            `podcast_${Date.now()}_${audioFile.name}`,
+            (progress) => {
+              setUploadProgress(progress);
+              console.log(`Audio upload progress: ${progress}%`);
+            }
+          );
         }
-      };
+      }
       
-      console.log('Saving podcast metadata to database:', newPodcast);
+      // Wait for cover image upload to complete
+      if (coverImage) {
+        coverImageUrl = await coverImageUploadPromise;
+      }
       
-      // Update status when processing
+      // Both uploads are complete
+      console.log('All uploads complete. Publishing podcast...');
       setUploadStatus('processing');
       
-      // Save the podcast metadata to the database
-      const savedPodcast = await addPodcast(newPodcast);
+      // Create podcast
+      await addPodcast({
+        userId: session.user.id,
+        title: formData.title,
+        description: formData.description || '',
+        audioUrl: audioFileUrl,
+        coverImage: coverImageUrl,
+        isPublic: formData.isPublic,
+      });
       
-      setUploadStatus('complete');
-      console.log('Podcast saved successfully:', savedPodcast);
       toast.success('Podcast published successfully!');
+      setUploadStatus('complete');
+      
+      // Reset form after successful submission
       router.push('/dashboard');
     } catch (error) {
+      console.error('Error publishing podcast:', error);
+      toast.error(`Failed to publish podcast: ${error.message || 'Please try again'}`);
       setUploadStatus('error');
-      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error('Error uploading podcast:', error);
-      toast.error(`Failed to publish podcast: ${errorMessage}`);
     } finally {
       setIsSubmitting(false);
-      setUploadProgress(0);
     }
   };
 
@@ -382,289 +450,328 @@ const RecordPage = () => {
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      {/* Header and navigation */}
-      <div className="mb-6 flex items-center">
-        <Link href="/dashboard" className="text-gray-400 hover:text-white mr-4">
-          <FaArrowLeft size={20} />
-        </Link>
-        <h1 className="text-2xl font-bold">Record a Podcast</h1>
-      </div>
-      
-      <div className="bg-gray-900 rounded-lg overflow-hidden">
-        {/* Form content */}
-        <div className="p-4">
-          <form 
-            onSubmit={(e) => {
-              e.preventDefault();
-              handlePublish();
-            }} 
-            className="max-w-2xl mx-auto"
-          >
-            {/* Recording mode tabs */}
-            <div className="flex mb-6 bg-gray-800 rounded-full p-1">
-              <button
-                type="button"
-                onClick={() => setRecordingMode('record')}
-                className={`flex-1 py-2 px-4 rounded-full flex items-center justify-center space-x-2 ${
-                  recordingMode === 'record'
-                    ? 'bg-primary-600 text-white'
-                    : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                <FaMicrophone className="mr-2" />
-                <span>Record</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setRecordingMode('upload')}
-                className={`flex-1 py-2 px-4 rounded-full flex items-center justify-center space-x-2 ${
-                  recordingMode === 'upload'
-                    ? 'bg-primary-600 text-white'
-                    : 'text-gray-400 hover:text-white'
-                }`}
-              >
-                <FaUpload className="mr-2" />
-                <span>Upload</span>
-              </button>
-            </div>
-
-            {/* Title input */}
-            <div className="mb-4">
-              <input
-                type="text"
-                id="title"
-                name="title"
-                value={formData.title}
-                onChange={handleInputChange}
-                placeholder="Podcast title"
-                className="w-full py-3 px-4 bg-transparent text-white placeholder-gray-500 focus:outline-none text-xl"
-                required
-              />
-            </div>
-
-            {/* Description input */}
-            <div className="mb-4 relative">
-              <textarea
-                id="description"
-                name="description"
-                value={formData.description}
-                onChange={handleInputChange}
-                placeholder="What's this podcast about?"
-                className="w-full min-h-[120px] py-3 px-4 bg-transparent text-white placeholder-gray-500 focus:outline-none resize-none"
-                maxLength={MAX_CHARS}
-              />
-              <div className={`text-right text-sm ${charCount > MAX_CHARS * 0.8 ? (charCount > MAX_CHARS ? 'text-red-500' : 'text-yellow-500') : 'text-gray-500'}`}>
-                {charCount}/{MAX_CHARS}
-              </div>
-            </div>
-
-            {/* After the description field, add the cover image upload section */}
-            <div className="mb-6">
-              <label className="block text-white mb-2 font-medium">Cover Image (Optional)</label>
-              <div className="flex items-start space-x-4">
-                {/* Cover image preview */}
-                <div className="relative w-32 h-32 bg-gray-800 rounded-lg overflow-hidden flex items-center justify-center">
-                  {coverImagePreview ? (
-                    <Image
-                      src={coverImagePreview}
-                      alt="Cover Preview"
-                      layout="fill"
-                      objectFit="cover"
-                      className="w-full h-full"
-                    />
-                  ) : (
-                    <FaImage className="text-gray-600 text-3xl" />
-                  )}
-                </div>
-                
-                <div className="flex-1">
-                  <div className="mb-2">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={handleCoverImageChange}
-                      ref={coverImageInputRef}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => coverImageInputRef.current?.click()}
-                      className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg mr-2"
-                    >
-                      {coverImage ? 'Change Image' : 'Upload Image'}
-                    </button>
-                    
-                    {coverImage && (
-                      <button
-                        type="button"
-                        onClick={handleRemoveCoverImage}
-                        className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg"
-                      >
-                        Remove
-                      </button>
-                    )}
-                  </div>
-                  <p className="text-gray-400 text-sm">
-                    Recommended: Square image (1:1 ratio), minimum 400x400 pixels.
-                  </p>
-                </div>
-              </div>
-            </div>
-            
-            {/* Privacy settings */}
-            <div className="mb-6">
-              <label className="block text-white mb-2 font-medium">Privacy</label>
-              <div className="flex space-x-4">
-                <label className={`flex items-center space-x-2 p-3 rounded-lg cursor-pointer ${formData.isPublic ? 'bg-gray-700 border-2 border-primary-600' : 'bg-gray-800 border-2 border-transparent'}`}>
-                  <input
-                    type="radio"
-                    name="isPublic"
-                    checked={formData.isPublic}
-                    onChange={() => setFormData(prev => ({ ...prev, isPublic: true }))}
-                    className="hidden"
-                  />
-                  <FaGlobe className={formData.isPublic ? 'text-primary-500' : 'text-gray-400'} />
-                  <div>
-                    <p className="font-medium">Public</p>
-                    <p className="text-gray-400 text-sm">Anyone can listen</p>
-                  </div>
-                </label>
-                
-                <label className={`flex items-center space-x-2 p-3 rounded-lg cursor-pointer ${!formData.isPublic ? 'bg-gray-700 border-2 border-primary-600' : 'bg-gray-800 border-2 border-transparent'}`}>
-                  <input
-                    type="radio"
-                    name="isPublic"
-                    checked={!formData.isPublic}
-                    onChange={() => setFormData(prev => ({ ...prev, isPublic: false }))}
-                    className="hidden"
-                  />
-                  <FaLock className={!formData.isPublic ? 'text-primary-500' : 'text-gray-400'} />
-                  <div>
-                    <p className="font-medium">Private</p>
-                    <p className="text-gray-400 text-sm">Only you can listen</p>
-                  </div>
-                </label>
-              </div>
-            </div>
-
-            {/* Audio capture section */}
-            <div className="mb-6 bg-gray-800 rounded-lg p-4">
-              {recordingMode === 'record' ? (
-                <div className="flex flex-col items-center p-4">
-                  <div className="mb-4">
-                    <ClientAudioRecorder
-                      onRecordingComplete={handleRecordingComplete}
-                      audioTrackConstraints={{
-                        noiseSuppression: true,
-                        echoCancellation: true,
-                      }}
-                      showVisualizer={true}
-                    />
-                  </div>
-                  <p className="text-sm text-gray-400">
-                    Click the microphone to start recording
-                  </p>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center p-4">
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={handleFileChange}
-                    accept="audio/*"
-                    className="hidden"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="mb-4 px-6 py-3 bg-gray-700 hover:bg-gray-600 rounded-full text-white flex items-center"
-                  >
-                    <FaUpload className="mr-2" />
-                    <span>Select audio file</span>
-                  </button>
-                  {selectedFile && (
-                    <p className="text-sm text-gray-400">
-                      Selected: {selectedFile.name}
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {/* Audio preview */}
-              {audioUrl && (
-                <div className="mt-4 border-t border-gray-700 pt-4">
-                  <div className="flex justify-between items-center mb-2">
-                    <h3 className="font-medium">Preview</h3>
-                    <button
-                      type="button"
-                      onClick={handleDiscardAudio}
-                      className="text-red-500 hover:text-red-400 text-sm flex items-center"
-                    >
-                      <FaTrash className="mr-1" />
-                      <span>Discard</span>
-                    </button>
-                  </div>
-                  <audio ref={audioRef} src={audioUrl} className="w-full mb-2" onEnded={() => setIsPlaying(false)} />
-                  <div className="flex justify-center">
-                    <button
-                      type="button"
-                      onClick={togglePlay}
-                      className="p-3 bg-primary-600 hover:bg-primary-700 rounded-full text-white"
-                    >
-                      {isPlaying ? <FaPause /> : <FaPlay />}
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Upload progress */}
-            {isSubmitting && (
-              <UploadProgressBar progress={uploadProgress} />
-            )}
-
-            {/* Submit button */}
-            <div className="mt-8">
-              <button
-                type="submit"
-                disabled={isSubmitting || (!audioBlob && !selectedFile) || !formData.title}
-                className={`w-full rounded-lg py-3 px-4 font-medium flex items-center justify-center space-x-2 ${
-                  isSubmitting || (!audioBlob && !selectedFile) || !formData.title
-                    ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
-                    : 'bg-primary-600 text-white hover:bg-primary-700'
-                }`}
-              >
-                {isSubmitting ? (
-                  <>
-                    <div className="animate-spin mr-2 h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
-                    <span>
-                      {uploadStatus === 'processing' 
-                        ? 'Processing podcast...' 
-                        : `Uploading... ${Math.round(uploadProgress)}%`
-                      }
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <FaSave className="mr-2" />
-                    <span>Publish Podcast</span>
-                  </>
-                )}
-              </button>
-            </div>
-          </form>
+    <div className="min-h-screen bg-gray-50 py-8 flex flex-col">
+      <div className="container max-w-4xl mx-auto px-4 flex-grow">
+        <div className="mb-6 flex items-center">
+          <Link href="/dashboard" className="text-gray-600 hover:text-gray-900 flex items-center">
+            <FaArrowLeft className="mr-2" /> Back to Dashboard
+          </Link>
         </div>
         
-        {/* Audio element for playback */}
-        {audioUrl && (
-          <audio
-            ref={audioRef}
-            src={audioUrl}
-            onEnded={() => setIsPlaying(false)}
-            style={{ display: 'none' }}
-          />
+        <h1 className="text-3xl font-bold mb-6">Create New Podcast</h1>
+        
+        {/* Upload status indicator */}
+        {uploadStatus !== 'idle' && (
+          <div className="mb-6 bg-white shadow rounded-lg p-4">
+            <div className="mb-2 flex justify-between items-center">
+              <h3 className="font-medium text-gray-700">
+                {uploadStatus === 'uploading' && 'Uploading podcast...'}
+                {uploadStatus === 'processing' && 'Processing podcast...'}
+                {uploadStatus === 'complete' && 'Upload complete!'}
+                {uploadStatus === 'error' && 'Upload failed'}
+              </h3>
+              <span className="text-sm font-medium text-gray-500">
+                {uploadStatus === 'uploading' && `${uploadProgress}%`}
+                {uploadStatus === 'complete' && '100%'}
+              </span>
+            </div>
+            
+            <div className="w-full bg-gray-200 rounded-full h-3">
+              <div 
+                className={`h-3 rounded-full ${
+                  uploadStatus === 'error' ? 'bg-red-500' : 
+                  uploadStatus === 'complete' ? 'bg-green-500' : 
+                  'bg-blue-500'
+                }`}
+                style={{ width: `${uploadProgress}%` }}
+              ></div>
+            </div>
+            
+            {uploadStatus === 'uploading' && (
+              <p className="mt-2 text-sm text-gray-500">
+                Uploading your podcast file in the background. You can continue filling out the details below.
+              </p>
+            )}
+            {uploadStatus === 'error' && (
+              <p className="mt-2 text-sm text-red-500 flex items-center">
+                <FaExclamationTriangle className="mr-1" /> 
+                There was an error uploading your file. Please try again.
+              </p>
+            )}
+          </div>
         )}
+  
+        {/* Mode selection tabs */}
+        <div className="bg-gray-900 rounded-lg overflow-hidden">
+          {/* Form content */}
+          <div className="p-4">
+            <form 
+              onSubmit={(e) => {
+                e.preventDefault();
+                handlePublish();
+              }} 
+              className="max-w-2xl mx-auto"
+            >
+              {/* Recording mode tabs */}
+              <div className="flex mb-6 bg-gray-800 rounded-full p-1">
+                <button
+                  type="button"
+                  onClick={() => setRecordingMode('record')}
+                  className={`flex-1 py-2 px-4 rounded-full flex items-center justify-center space-x-2 ${
+                    recordingMode === 'record'
+                      ? 'bg-primary-600 text-white'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  <FaMicrophone className="mr-2" />
+                  <span>Record</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRecordingMode('upload')}
+                  className={`flex-1 py-2 px-4 rounded-full flex items-center justify-center space-x-2 ${
+                    recordingMode === 'upload'
+                      ? 'bg-primary-600 text-white'
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                >
+                  <FaUpload className="mr-2" />
+                  <span>Upload</span>
+                </button>
+              </div>
+
+              {/* Title input */}
+              <div className="mb-4">
+                <input
+                  type="text"
+                  id="title"
+                  name="title"
+                  value={formData.title}
+                  onChange={handleInputChange}
+                  placeholder="Podcast title"
+                  className="w-full py-3 px-4 bg-transparent text-white placeholder-gray-500 focus:outline-none text-xl"
+                  required
+                />
+              </div>
+
+              {/* Description input */}
+              <div className="mb-4 relative">
+                <textarea
+                  id="description"
+                  name="description"
+                  value={formData.description}
+                  onChange={handleInputChange}
+                  placeholder="What's this podcast about?"
+                  className="w-full min-h-[120px] py-3 px-4 bg-transparent text-white placeholder-gray-500 focus:outline-none resize-none"
+                  maxLength={MAX_CHARS}
+                />
+                <div className={`text-right text-sm ${charCount > MAX_CHARS * 0.8 ? (charCount > MAX_CHARS ? 'text-red-500' : 'text-yellow-500') : 'text-gray-500'}`}>
+                  {charCount}/{MAX_CHARS}
+                </div>
+              </div>
+
+              {/* After the description field, add the cover image upload section */}
+              <div className="mb-6">
+                <label className="block text-white mb-2 font-medium">Cover Image (Optional)</label>
+                <div className="flex items-start space-x-4">
+                  {/* Cover image preview */}
+                  <div className="relative w-32 h-32 bg-gray-800 rounded-lg overflow-hidden flex items-center justify-center">
+                    {coverImagePreview ? (
+                      <Image
+                        src={coverImagePreview}
+                        alt="Cover Preview"
+                        layout="fill"
+                        objectFit="cover"
+                        className="w-full h-full"
+                      />
+                    ) : (
+                      <FaImage className="text-gray-600 text-3xl" />
+                    )}
+                  </div>
+                  
+                  <div className="flex-1">
+                    <div className="mb-2">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleCoverImageChange}
+                        ref={coverImageInputRef}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => coverImageInputRef.current?.click()}
+                        className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-lg mr-2"
+                      >
+                        {coverImage ? 'Change Image' : 'Upload Image'}
+                      </button>
+                      
+                      {coverImage && (
+                        <button
+                          type="button"
+                          onClick={handleRemoveCoverImage}
+                          className="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-gray-400 text-sm">
+                      Recommended: Square image (1:1 ratio), minimum 400x400 pixels.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              
+              {/* Privacy settings */}
+              <div className="mb-6">
+                <label className="block text-white mb-2 font-medium">Privacy</label>
+                <div className="flex space-x-4">
+                  <label className={`flex items-center space-x-2 p-3 rounded-lg cursor-pointer ${formData.isPublic ? 'bg-gray-700 border-2 border-primary-600' : 'bg-gray-800 border-2 border-transparent'}`}>
+                    <input
+                      type="radio"
+                      name="isPublic"
+                      checked={formData.isPublic}
+                      onChange={() => setFormData(prev => ({ ...prev, isPublic: true }))}
+                      className="hidden"
+                    />
+                    <FaGlobe className={formData.isPublic ? 'text-primary-500' : 'text-gray-400'} />
+                    <div>
+                      <p className="font-medium">Public</p>
+                      <p className="text-gray-400 text-sm">Anyone can listen</p>
+                    </div>
+                  </label>
+                  
+                  <label className={`flex items-center space-x-2 p-3 rounded-lg cursor-pointer ${!formData.isPublic ? 'bg-gray-700 border-2 border-primary-600' : 'bg-gray-800 border-2 border-transparent'}`}>
+                    <input
+                      type="radio"
+                      name="isPublic"
+                      checked={!formData.isPublic}
+                      onChange={() => setFormData(prev => ({ ...prev, isPublic: false }))}
+                      className="hidden"
+                    />
+                    <FaLock className={!formData.isPublic ? 'text-primary-500' : 'text-gray-400'} />
+                    <div>
+                      <p className="font-medium">Private</p>
+                      <p className="text-gray-400 text-sm">Only you can listen</p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              {/* Audio capture section */}
+              <div className="mb-6 bg-gray-800 rounded-lg p-4">
+                {recordingMode === 'record' ? (
+                  <div className="flex flex-col items-center p-4">
+                    <div className="mb-4">
+                      <ClientAudioRecorder
+                        onRecordingComplete={handleRecordingComplete}
+                        audioTrackConstraints={{
+                          noiseSuppression: true,
+                          echoCancellation: true,
+                        }}
+                        showVisualizer={true}
+                      />
+                    </div>
+                    <p className="text-sm text-gray-400">
+                      Click the microphone to start recording
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center p-4">
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleFileChange}
+                      accept="audio/*"
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="mb-4 px-6 py-3 bg-gray-700 hover:bg-gray-600 rounded-full text-white flex items-center"
+                    >
+                      <FaUpload className="mr-2" />
+                      <span>Select audio file</span>
+                    </button>
+                    {selectedFile && (
+                      <p className="text-sm text-gray-400">
+                        Selected: {selectedFile.name}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Audio preview */}
+                {audioUrl && (
+                  <div className="mt-4 border-t border-gray-700 pt-4">
+                    <div className="flex justify-between items-center mb-2">
+                      <h3 className="font-medium">Preview</h3>
+                      <button
+                        type="button"
+                        onClick={handleDiscardAudio}
+                        className="text-red-500 hover:text-red-400 text-sm flex items-center"
+                      >
+                        <FaTrash className="mr-1" />
+                        <span>Discard</span>
+                      </button>
+                    </div>
+                    <audio ref={audioRef} src={audioUrl} className="w-full mb-2" onEnded={() => setIsPlaying(false)} />
+                    <div className="flex justify-center">
+                      <button
+                        type="button"
+                        onClick={togglePlay}
+                        className="p-3 bg-primary-600 hover:bg-primary-700 rounded-full text-white"
+                      >
+                        {isPlaying ? <FaPause /> : <FaPlay />}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Submit button */}
+              <div className="mt-8">
+                <button
+                  type="submit"
+                  disabled={isSubmitting || (!audioBlob && !selectedFile) || !formData.title}
+                  className={`w-full rounded-lg py-3 px-4 font-medium flex items-center justify-center space-x-2 ${
+                    isSubmitting || (!audioBlob && !selectedFile) || !formData.title
+                      ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                      : 'bg-primary-600 text-white hover:bg-primary-700'
+                  }`}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <div className="animate-spin mr-2 h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
+                      <span>
+                        {uploadStatus === 'processing' 
+                          ? 'Processing podcast...' 
+                          : `Uploading... ${Math.round(uploadProgress)}%`
+                        }
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <FaSave className="mr-2" />
+                      <span>Publish Podcast</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+          
+          {/* Audio element for playback */}
+          {audioUrl && (
+            <audio
+              ref={audioRef}
+              src={audioUrl}
+              onEnded={() => setIsPlaying(false)}
+              style={{ display: 'none' }}
+            />
+          )}
+        </div>
       </div>
     </div>
   );
