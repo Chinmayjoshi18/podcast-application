@@ -25,16 +25,22 @@ const ClientAudioRecorder = dynamic(
 );
 
 const UploadProgressBar = ({ progress }: { progress: number }) => {
+  // Ensure progress is always a valid number
+  const displayProgress = Number.isFinite(progress) ? Math.max(0, Math.min(100, progress)) : 0;
+  
   return (
     <div className="my-4">
       <div className="flex justify-between mb-1">
         <span className="text-base font-medium">Uploading...</span>
-        <span className="text-base font-medium">{progress}%</span>
+        <span className="text-base font-medium">{displayProgress}%</span>
       </div>
       <div className="w-full bg-gray-700 rounded-full h-2.5 overflow-hidden">
         <div 
           className="bg-primary-600 h-2.5 rounded-full transition-all duration-300 ease-in-out" 
-          style={{ width: `${progress}%` }}
+          style={{ 
+            width: `${displayProgress}%`,
+            minWidth: displayProgress > 0 ? '5px' : '0'
+          }}
         ></div>
       </div>
     </div>
