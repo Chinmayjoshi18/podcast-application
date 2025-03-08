@@ -44,98 +44,295 @@ export const uploadAudioFile = async (
     const fileSizeMB = Math.round((file.size / (1024 * 1024)) * 100) / 100;
     console.log(`Starting upload for ${file.name} (${fileSizeMB}MB)`);
     
-    // For very large files (over 50MB), special handling is required
-    const isLargeFile = file.size > 25 * 1024 * 1024; // Reduced to 25MB since we have credentials
+    // For audio files, we want to optimize the upload speed
+    const isAudio = folder === 'podcast-audio';
     
-    if (isLargeFile) {
-      console.log(`Large file detected (${fileSizeMB}MB), using direct Cloudinary upload`);
-      
-      // Hard-coded Cloudinary information based on provided credentials
-      const cloudName = "dbrso3dnr"; 
-      const uploadPreset = "podcast_uploads"; // Default unsigned upload preset - make sure this exists in Cloudinary
-      
-      console.log('Cloudinary config:', { cloudName, uploadPreset });
-      
-      // Start direct upload to Cloudinary
-      onProgress(1); // Show initial progress
-      
-      return await directCloudinaryUpload(
-        file, 
-        {
-          cloudName: cloudName,
-          uploadPreset: uploadPreset, 
-          folder: folder,
-          resourceType: folder === 'podcast-audio' ? 'video' : 'auto'
-        },
+    // Set optimization constants - higher for audio, lower for images
+    const CHUNK_SIZE = isAudio ? 1024 * 1024 : 2 * 1024 * 1024; // 1MB chunks for audio, 2MB for others
+    const MAX_CONCURRENT_CHUNKS = isAudio ? 4 : 2; // More concurrent uploads for audio
+    
+    // For faster uploads of any size, use chunked upload approach
+    if (file.size > 5 * 1024 * 1024) { // Files over 5MB
+      console.log(`Large file detected (${fileSizeMB}MB), using chunked upload with ${MAX_CONCURRENT_CHUNKS} concurrent chunks`);
+      return await uploadWithChunks(
+        file,
+        folder,
+        filename,
+        CHUNK_SIZE,
+        MAX_CONCURRENT_CHUNKS,
         onProgress
       );
     }
     
-    // For smaller files (under 25MB), use server-side upload
-    console.log(`Standard file size (${fileSizeMB}MB), using server upload`);
-    
-    // Use XMLHttpRequest for better progress tracking
-    const url = await new Promise<string>((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      
-      // Track upload progress
-      xhr.upload.addEventListener('progress', (event) => {
-        if (event.lengthComputable) {
-          // Cap progress at 95% until we get server confirmation
-          const progress = Math.min(Math.round((event.loaded / event.total) * 100), 95);
-          onProgress(progress);
-          uploadProgressMap.set(uploadId, progress);
-          console.log(`Upload progress: ${progress}%`);
-        }
-      });
-      
-      xhr.addEventListener('load', () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            const response = JSON.parse(xhr.responseText);
-            if (response.success && response.url) {
-              // Set to 100% when complete
-              onProgress(100);
-              uploadProgressMap.set(uploadId, 100);
-              resolve(response.url);
-            } else {
-              reject(new Error(response.error || 'Upload failed with unknown error'));
-            }
-          } catch (error) {
-            reject(new Error(`Failed to parse upload response: ${error.message}`));
-          }
-        } else {
-          reject(new Error(`Upload failed with status: ${xhr.status}`));
-        }
-      });
-      
-      xhr.addEventListener('error', () => {
-        reject(new Error('Upload failed due to network error'));
-      });
-      
-      xhr.addEventListener('abort', () => {
-        reject(new Error('Upload was aborted'));
-      });
-      
-      // Open and send the request
-      xhr.open('POST', '/api/upload');
-      xhr.send(createFormData(file, folder));
-    });
-    
-    console.log(`Upload completed successfully: ${url}`);
-    
-    // Validate URL before returning
-    if (!url || !url.startsWith('http')) {
-      throw new Error(`Invalid URL returned from upload: ${url}`);
-    }
-    
-    return url;
+    // For smaller files (under 5MB), use simple direct upload to Cloudinary
+    console.log(`Small file detected (${fileSizeMB}MB), using direct upload`);
+    return await simpleDirectUpload(file, folder, onProgress);
   } catch (error) {
     console.error(`Error uploading file ${file.name}:`, error);
     // Clean up progress tracking
     uploadProgressMap.delete(uploadId);
     throw error;
   }
+}
+
+/**
+ * Upload a file directly to Cloudinary (for small files)
+ */
+async function simpleDirectUpload(
+  file: File,
+  folder: string,
+  onProgress: (progress: number) => void
+): Promise<string> {
+  const isAudio = folder === 'podcast-audio';
+  const resourceType = isAudio ? 'video' : 'auto';
+  const cloudName = "dbrso3dnr";
+  const uploadPreset = "podcast_uploads";
+  
+  // Create upload URL
+  const uploadUrl = `https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/upload`;
+  
+  return new Promise<string>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const formData = new FormData();
+    
+    // Add file and upload params
+    formData.append('file', file);
+    formData.append('upload_preset', uploadPreset);
+    formData.append('folder', folder);
+    formData.append('public_id', `${Date.now()}_${file.name.replace(/\.[^/.]+$/, "")}`);
+    
+    // Track progress
+    xhr.upload.addEventListener('progress', (event) => {
+      if (event.lengthComputable) {
+        const progress = Math.min(Math.round((event.loaded / event.total) * 100), 95);
+        onProgress(progress);
+      }
+    });
+    
+    xhr.addEventListener('load', () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const response = JSON.parse(xhr.responseText);
+          if (response.secure_url) {
+            onProgress(100);
+            resolve(response.secure_url);
+          } else {
+            reject(new Error('Missing secure_url in response'));
+          }
+        } catch (error) {
+          reject(error);
+        }
+      } else {
+        reject(new Error(`Upload failed: ${xhr.status}`));
+      }
+    });
+    
+    xhr.addEventListener('error', () => reject(new Error('Network error')));
+    xhr.open('POST', uploadUrl);
+    xhr.send(formData);
+  });
+}
+
+/**
+ * Upload a file in chunks with multiple concurrent uploads for speed
+ */
+async function uploadWithChunks(
+  file: File,
+  folder: string,
+  filename: string,
+  chunkSize: number,
+  maxConcurrent: number,
+  onProgress: (progress: number) => void
+): Promise<string> {
+  const cloudName = "dbrso3dnr";
+  const uploadPreset = "podcast_uploads";
+  const isAudio = folder === 'podcast-audio';
+  const resourceType = isAudio ? 'video' : 'auto';
+  
+  // Create a unique tag for this upload to identify all chunks
+  const uniqueUploadTag = `upload_${Date.now()}_${Math.floor(Math.random() * 1000000)}`;
+  
+  // Calculate total chunks
+  const totalChunks = Math.ceil(file.size / chunkSize);
+  console.log(`Splitting ${file.name} into ${totalChunks} chunks of ${chunkSize/1024}KB each`);
+  
+  // Keep track of progress
+  let completedChunks = 0;
+  let activeUploads = 0;
+  let uploadedChunks: number[] = [];
+  let failed = false;
+  
+  // Process all chunks with throttling
+  return new Promise<string>(async (resolve, reject) => {
+    // Create a queue of chunks to process
+    const chunkQueue: number[] = Array.from({ length: totalChunks }, (_, i) => i);
+    
+    // Function to process the next chunk in the queue
+    const processNextChunk = async () => {
+      if (failed) return;
+      
+      if (chunkQueue.length === 0) {
+        if (activeUploads === 0 && !failed) {
+          // All chunks uploaded, now finalize
+          try {
+            if (completedChunks === totalChunks) {
+              onProgress(96); // Show 96% after all chunks are done
+              const result = await finalizeChunkedUpload(
+                uniqueUploadTag, 
+                filename, 
+                totalChunks, 
+                cloudName, 
+                folder, 
+                resourceType
+              );
+              onProgress(100);
+              resolve(result.secure_url);
+            }
+          } catch (error) {
+            console.error("Error finalizing upload:", error);
+            failed = true;
+            reject(error);
+          }
+        }
+        return;
+      }
+      
+      // Get next chunk and start upload
+      const chunkIndex = chunkQueue.shift()!;
+      activeUploads++;
+      
+      const start = chunkIndex * chunkSize;
+      const end = Math.min(file.size, start + chunkSize);
+      const chunk = file.slice(start, end);
+      
+      try {
+        await uploadChunk(
+          chunk,
+          chunkIndex,
+          totalChunks,
+          uniqueTag,
+          cloudName,
+          uploadPreset,
+          folder,
+          resourceType
+        );
+        
+        completedChunks++;
+        uploadedChunks.push(chunkIndex);
+        
+        // Update progress (cap at 95% until final step)
+        const newProgress = Math.min(Math.floor((completedChunks / totalChunks) * 95), 95);
+        onProgress(newProgress);
+        
+        console.log(`Chunk ${chunkIndex + 1}/${totalChunks} uploaded (${completedChunks} total)`);
+      } catch (error) {
+        console.error(`Error uploading chunk ${chunkIndex}:`, error);
+        // Put chunk back in queue for retry
+        chunkQueue.push(chunkIndex);
+      } finally {
+        activeUploads--;
+        // Process next chunk
+        processNextChunk();
+      }
+      
+      // If we have capacity for more uploads, start more
+      if (activeUploads < maxConcurrent && chunkQueue.length > 0) {
+        processNextChunk();
+      }
+    };
+    
+    // Start initial batch of uploads
+    const initialBatch = Math.min(maxConcurrent, chunkQueue.length);
+    for (let i = 0; i < initialBatch; i++) {
+      processNextChunk();
+    }
+  });
+}
+
+/**
+ * Upload a single chunk to Cloudinary
+ */
+async function uploadChunk(
+  chunk: Blob,
+  chunkIndex: number,
+  totalChunks: number,
+  uniqueTag: string,
+  cloudName: string,
+  uploadPreset: string,
+  folder: string,
+  resourceType: string
+): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const formData = new FormData();
+    
+    // Add chunk data
+    formData.append('file', chunk);
+    formData.append('upload_preset', uploadPreset);
+    formData.append('folder', folder);
+    formData.append('public_id', `${uniqueTag}_chunk_${chunkIndex}`);
+    
+    // Add metadata for chunked upload
+    formData.append('tags', uniqueTag);
+    formData.append('context', `chunkIndex=${chunkIndex}|totalChunks=${totalChunks}`);
+    
+    const uploadUrl = `https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/upload`;
+    
+    xhr.addEventListener('load', () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const response = JSON.parse(xhr.responseText);
+          resolve(response);
+        } catch (error) {
+          reject(error);
+        }
+      } else {
+        reject(new Error(`Chunk upload failed: ${xhr.status}`));
+      }
+    });
+    
+    xhr.addEventListener('error', () => reject(new Error('Network error')));
+    xhr.open('POST', uploadUrl);
+    xhr.send(formData);
+  });
+}
+
+/**
+ * Finalize a chunked upload by calling Cloudinary's create_zip endpoint
+ * to combine all chunks into a single file
+ */
+async function finalizeChunkedUpload(
+  uniqueTag: string, 
+  filename: string,
+  totalChunks: number,
+  cloudName: string,
+  folder: string,
+  resourceType: string
+): Promise<any> {
+  // For finalization, we need to use our server as we need API credentials
+  console.log(`Finalizing upload of ${totalChunks} chunks with tag ${uniqueTag}`);
+  
+  // Send finalization request to our server
+  const response = await fetch('/api/upload/finalize', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      tag: uniqueTag,
+      filename: filename,
+      totalChunks: totalChunks,
+      folder: folder,
+      resourceType: resourceType
+    }),
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || `Failed to finalize upload: ${response.status}`);
+  }
+  
+  return await response.json();
 }
 
 /**
