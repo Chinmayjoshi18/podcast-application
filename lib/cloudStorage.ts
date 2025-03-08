@@ -16,7 +16,7 @@ export const getUploadProgress = (uploadId: string): number => {
 }
 
 /**
- * Upload a large file to cloud storage with chunking support
+ * Upload a file to cloud storage
  * 
  * @param file The file to upload
  * @param folder The destination folder in cloud storage
@@ -30,43 +30,142 @@ export const uploadAudioFile = async (
   filename: string,
   onProgress: (progress: number) => void
 ): Promise<string> => {
-  // Create unique ID for this upload
-  const uploadId = `${folder}_${filename}_${Date.now()}`;
-  uploadProgressMap.set(uploadId, 0);
+  // Immediately show some progress to indicate we're starting
+  onProgress(1);
+  console.log(`Starting upload for ${file.name} (${Math.round(file.size / (1024 * 1024))}MB)`);
 
-  try {
-    const fileSizeMB = Math.round((file.size / (1024 * 1024)) * 100) / 100;
-    console.log(`Starting upload for ${file.name} (${fileSizeMB}MB)`);
+  // We're going to use a simple, reliable approach with direct upload to Cloudinary
+  const isAudio = folder === 'podcast-audio';
+  const resourceType = isAudio ? 'video' : 'auto'; // Cloudinary uses 'video' for audio files
+  
+  // Cloudinary credentials
+  const cloudName = "dbrso3dnr";
+  const uploadPreset = "podcast_uploads";
+  
+  // Construct upload URL - critical to use the right endpoint for audio files
+  const uploadUrl = `https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/upload`;
+  
+  return new Promise((resolve, reject) => {
+    // Set up an XMLHttpRequest for better progress tracking
+    const xhr = new XMLHttpRequest();
     
-    // For audio files, we want to optimize the upload speed
-    const isAudio = folder === 'podcast-audio';
+    // Create form data with the file and parameters
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('upload_preset', uploadPreset);
+    formData.append('folder', folder);
+    formData.append('public_id', `podcast_${Date.now()}`);
     
-    // Set optimization constants - higher for audio, lower for images
-    const CHUNK_SIZE = isAudio ? 1024 * 1024 : 2 * 1024 * 1024; // 1MB chunks for audio, 2MB for others
-    const MAX_CONCURRENT_CHUNKS = isAudio ? 4 : 2; // More concurrent uploads for audio
-    
-    // For faster uploads of any size, use chunked upload approach
-    if (file.size > 5 * 1024 * 1024) { // Files over 5MB
-      console.log(`Large file detected (${fileSizeMB}MB), using chunked upload with ${MAX_CONCURRENT_CHUNKS} concurrent chunks`);
-      return await uploadWithChunks(
-        file,
-        folder,
-        filename,
-        CHUNK_SIZE,
-        MAX_CONCURRENT_CHUNKS,
-        onProgress
-      );
+    // Add additional parameters for audio files
+    if (isAudio) {
+      formData.append('resource_type', 'video');
+      formData.append('audio_codec', 'aac');
     }
     
-    // For smaller files (under 5MB), use simple direct upload to Cloudinary
-    console.log(`Small file detected (${fileSizeMB}MB), using direct upload`);
-    return await simpleDirectUpload(file, folder, onProgress);
-  } catch (error) {
-    console.error(`Error uploading file ${file.name}:`, error);
-    // Clean up progress tracking
-    uploadProgressMap.delete(uploadId);
-    throw error;
-  }
+    // Track upload progress
+    xhr.upload.addEventListener('progress', (event) => {
+      if (event.lengthComputable) {
+        // Calculate progress percentage (limit to 95% until complete)
+        const progressPercent = Math.min(Math.round((event.loaded / event.total) * 100), 95);
+        console.log(`Upload progress: ${progressPercent}%`);
+        onProgress(progressPercent);
+      }
+    });
+    
+    // Add additional event listeners for better debugging
+    xhr.addEventListener('loadstart', () => {
+      console.log('Upload started');
+      // Ensure we show at least 2% progress when starting
+      onProgress(2);
+    });
+    
+    xhr.addEventListener('loadend', () => {
+      console.log('Upload ended (success or error)');
+    });
+    
+    xhr.addEventListener('error', (error) => {
+      console.error('XHR error during upload:', error);
+      reject(new Error('Network error during upload'));
+    });
+    
+    xhr.addEventListener('abort', () => {
+      console.warn('Upload aborted');
+      reject(new Error('Upload was aborted'));
+    });
+    
+    // Handle the response
+    xhr.addEventListener('load', () => {
+      // Log detailed information about the response
+      console.log(`Upload completed with status: ${xhr.status}`);
+      
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const response = JSON.parse(xhr.responseText);
+          console.log('Cloudinary response:', response);
+          
+          if (response && response.secure_url) {
+            onProgress(100);
+            resolve(response.secure_url);
+          } else {
+            console.error('Missing secure_url in response:', response);
+            reject(new Error('Invalid response from Cloudinary (missing URL)'));
+          }
+        } catch (error) {
+          console.error('Error parsing response:', error, 'Response text:', xhr.responseText);
+          reject(new Error('Failed to parse upload response'));
+        }
+      } else {
+        console.error('Error status:', xhr.status, 'Response:', xhr.responseText);
+        try {
+          const errorResponse = JSON.parse(xhr.responseText);
+          reject(new Error(`Upload failed: ${errorResponse.error?.message || 'Unknown error'}`));
+        } catch (e) {
+          reject(new Error(`Upload failed with status: ${xhr.status}`));
+        }
+      }
+    });
+    
+    // Set timeout to 30 minutes for large uploads
+    xhr.timeout = 30 * 60 * 1000;
+    xhr.ontimeout = () => {
+      console.error('Upload timed out');
+      reject(new Error('Upload timed out after 30 minutes'));
+    };
+    
+    // Add a fallback progress timer that ensures progress always increases
+    // This helps to provide feedback even if the progress events are not firing
+    let currentProgress = 0;
+    const progressTimer = setInterval(() => {
+      currentProgress += 1;
+      if (currentProgress <= 90) {
+        console.log(`Fallback progress update: ${currentProgress}%`);
+        onProgress(currentProgress);
+      } else {
+        clearInterval(progressTimer);
+      }
+    }, 3000); // Update every 3 seconds
+    
+    // Execute the upload
+    try {
+      xhr.open('POST', uploadUrl);
+      xhr.send(formData);
+      console.log('XHR request sent to Cloudinary');
+    } catch (error) {
+      clearInterval(progressTimer);
+      console.error('Error initiating upload:', error);
+      reject(error);
+    }
+    
+    // Cleanup function to clear the progress timer when the upload is done
+    const cleanup = () => {
+      clearInterval(progressTimer);
+    };
+    
+    // Ensure the timer is cleared regardless of success or failure
+    xhr.addEventListener('loadend', cleanup);
+    xhr.addEventListener('error', cleanup);
+    xhr.addEventListener('abort', cleanup);
+  });
 }
 
 /**
