@@ -133,7 +133,8 @@ export const pauseUpload = (fileId: string): boolean => {
 export const resumeUpload = async (
   fileId: string, 
   file: File,
-  onProgress?: (progress: number) => void
+  onProgress?: (progress: number) => void,
+  userId?: string
 ): Promise<string> => {
   const cache = uploadCache.get(fileId);
   if (!cache || cache.status !== 'paused') {
@@ -148,7 +149,7 @@ export const resumeUpload = async (
   const folder = cache.uploadMethod === 'direct' ? 'images' : 'podcast-audio';
   
   // Actually restart the upload with the existing file
-  return startFileUpload(file, folder, onProgress);
+  return startFileUpload(file, folder, onProgress, userId);
 };
 
 /**
@@ -291,7 +292,8 @@ const uploadLargeFile = async (
 export const startFileUpload = async (
   file: File,
   folder: string,
-  onProgress?: (progress: number) => void
+  onProgress?: (progress: number) => void,
+  userId?: string
 ): Promise<string> => {
   // Generate a unique file ID based on file name, size and last modified date
   const fileId = `${file.name}_${file.size}_${file.lastModified}`;
@@ -342,7 +344,7 @@ export const startFileUpload = async (
       });
     } else if (existingCache.status === 'paused') {
       // Resume paused upload
-      return resumeUpload(fileId, file, onProgress);
+      return resumeUpload(fileId, file, onProgress, userId);
     }
   }
   
@@ -379,7 +381,14 @@ export const startFileUpload = async (
     // Generate a unique filename to avoid collisions
     const fileExt = file.name.split('.').pop() || 'bin';
     const uniqueFilename = `${uuidv4()}.${fileExt}`;
-    const filePath = folder ? `${folder}/${uniqueFilename}` : uniqueFilename;
+    
+    // Include userId in path to comply with row-level security policies
+    const safeUserId = userId || 'anonymous';
+    const filePath = folder 
+      ? `${safeUserId}/${uniqueFilename}` 
+      : `${safeUserId}/${uniqueFilename}`;
+    
+    console.log(`Starting upload for ${file.name} to ${filePath}`);
     
     // Determine the correct bucket based on the folder
     const bucketName = folder === 'podcast-audio' 
@@ -497,6 +506,9 @@ export const startFileUpload = async (
       error.message?.includes('offline') ||
       error.message?.includes('timeout');
     
+    // Check for RLS policy violation
+    const isRLSError = error.message?.includes('new row violates row-level security policy');
+    
     console.error(`Error uploading file ${file.name}:`, error);
     
     // Get current cache entry
@@ -514,7 +526,7 @@ export const startFileUpload = async (
       
       // Wait and retry
       await new Promise(resolve => setTimeout(resolve, UPLOAD_SETTINGS.RETRY_DELAY));
-      return startFileUpload(file, folder, onProgress);
+      return startFileUpload(file, folder, onProgress, userId);
     }
     
     // Update cache with error
@@ -527,7 +539,9 @@ export const startFileUpload = async (
     });
     
     // Specific user feedback based on error
-    if (isNetworkError) {
+    if (isRLSError) {
+      toast.error('Upload failed: Security policy violation. Please contact support.');
+    } else if (isNetworkError) {
       toast.error(`Upload failed: Network connection lost. Please check your internet connection.`);
     } else if (error.statusCode === 413 || error.message?.includes('too large')) {
       toast.error(`File is too large. Maximum file size is ${Math.floor(UPLOAD_SETTINGS.LARGE_FILE_THRESHOLD / (1024 * 1024))}MB.`);
@@ -548,7 +562,8 @@ export const uploadAudioFile = async (
   file: File,
   folder: string,
   filename: string, // filename is ignored, we generate unique names
-  onProgress: (progress: number) => void
+  onProgress: (progress: number) => void,
+  userId?: string
 ): Promise<string> => {
   // Check if this file is already uploading or uploaded
   const fileId = `${file.name}_${file.size}_${file.lastModified}`;
@@ -565,7 +580,7 @@ export const uploadAudioFile = async (
   
   // If not already uploaded, start a new upload
   console.log(`File ${file.name} is not cached, starting new upload`);
-  return startFileUpload(file, folder, onProgress);
+  return startFileUpload(file, folder, onProgress, userId);
 };
 
 // Cleanup function to periodically remove old cache entries

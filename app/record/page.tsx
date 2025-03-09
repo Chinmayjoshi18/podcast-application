@@ -287,6 +287,17 @@ const RecordPage = () => {
       setIsSubmitting(true);
       setUploadStatus('processing');
       
+      // Ensure user is authenticated
+      if (!session?.user?.id) {
+        toast.error('You must be logged in to publish a podcast.');
+        setUploadStatus('idle');
+        setIsSubmitting(false);
+        return;
+      }
+      
+      // Get user ID for storage policy compliance
+      const userId = session.user.id;
+      
       // Validate form data
       if (!formData.title.trim()) {
         toast.error('Please add a title for your podcast');
@@ -326,7 +337,8 @@ const RecordPage = () => {
             'images',
             (progress) => {
               console.log(`Cover image upload progress: ${progress}%`);
-            }
+            },
+            userId // Pass userId for RLS policy compliance
           ).then(url => {
             console.log('Cover image upload complete:', url);
             publishTracker.coverImageComplete = true;
@@ -411,7 +423,8 @@ const RecordPage = () => {
               setUploadProgress(progress);
               console.log(`Audio upload progress: ${progress}%`);
               toast.loading(`Audio upload: ${progress}%...`, { id: publishToastId });
-            }
+            },
+            userId // Pass userId for RLS policy compliance
           );
           
           publishTracker.audioUploadComplete = true;
@@ -443,14 +456,14 @@ const RecordPage = () => {
       
       try {
         const podcastData = {
-          userId: session?.user?.id || '',
+          userId: userId,
           title: formData.title.trim(),
           description: formData.description.trim() || '',
           audioUrl: audioFileUrl,
           coverImage: coverImageUrl || '',
           isPublic: formData.isPublic,
           user: {
-            id: session?.user?.id || '',
+            id: userId,
             name: session?.user?.name || '',
             image: session?.user?.image || '',
           },
@@ -498,6 +511,8 @@ const RecordPage = () => {
         errorMessage = 'The operation timed out. Please try again with a better connection.';
       } else if (error.message?.includes('database') || error.message?.includes('save')) {
         errorMessage = 'Failed to save podcast details. Your files were uploaded successfully.';
+      } else if (error.message?.includes('security policy') || error.message?.includes('violates row-level')) {
+        errorMessage = 'Security policy violation. Please try logging out and back in again.';
       }
       
       toast.error(errorMessage);
