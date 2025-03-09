@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useSession } from 'next-auth/react';
+import { useSupabase } from '@/app/providers/SupabaseProvider';
+import { useRouter } from 'next/navigation';
 import { getPublicPodcasts, updatePodcast, Podcast } from '@/lib/storage';
 import { FaFire, FaStar, FaClock, FaFilter } from 'react-icons/fa';
 import PodcastCard from '@/app/components/PodcastCard';
@@ -15,7 +16,8 @@ const categories = [
 ];
 
 const ExplorePage = () => {
-  const { data: session, status } = useSession();
+  const router = useRouter();
+  const { user, isLoading: authLoading } = useSupabase();
   const [podcasts, setPodcasts] = useState<Podcast[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeCategory, setActiveCategory] = useState('trending');
@@ -48,8 +50,8 @@ const ExplorePage = () => {
     loadPodcasts();
     
     // Load liked podcasts from localStorage if user is logged in
-    if (status === 'authenticated' && session?.user) {
-      const savedLikes = localStorage.getItem(`likes_${session.user.email}`);
+    if (user && user.email) {
+      const savedLikes = localStorage.getItem(`likes_${user.email}`);
       if (savedLikes) {
         try {
           setLikedPodcasts(new Set(JSON.parse(savedLikes)));
@@ -58,16 +60,16 @@ const ExplorePage = () => {
         }
       }
     }
-  }, [status, session]);
+  }, [user]);
   
   // Handle podcast like
   const handleLike = async (podcastId: string) => {
-    if (!session?.user) {
+    if (!user) {
       toast.error("Please sign in to like podcasts");
       return;
     }
     
-    const userId = session.user.email || session.user.id;
+    const userId = user.email || user.id;
     
     const newLikedPodcasts = new Set(likedPodcasts);
     
@@ -127,6 +129,18 @@ const ExplorePage = () => {
   
   const filteredPodcasts = getFilteredPodcasts();
   
+  // Update loading check
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-pulse text-primary-600">Loading...</div>
+      </div>
+    );
+  }
+
+  // Update authenticated check
+  const isAuthenticated = !!user;
+
   return (
     <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-700 scrollbar-track-gray-900">
       {/* Rest of the component remains the same */}

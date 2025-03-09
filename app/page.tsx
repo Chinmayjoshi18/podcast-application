@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useSession, signIn } from 'next-auth/react';
+import { useSupabase } from '@/app/providers/SupabaseProvider';
 import { getPublicPodcasts, getPublicPodcastsSync, Podcast, updatePodcast } from '@/lib/storage';
 import PodcastPost from './components/PodcastPost';
 import { FaHeart, FaMicrophone, FaHeadphones, FaUserFriends } from 'react-icons/fa';
@@ -87,7 +87,7 @@ const generateSamplePodcasts = (count: number): Podcast[] => {
 
 const Home = () => {
   const router = useRouter();
-  const { data: session, status } = useSession();
+  const { user, isLoading: authLoading } = useSupabase();
   const [podcasts, setPodcasts] = useState<Podcast[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [currentlyPlaying, setCurrentlyPlaying] = useState<string | null>(null);
@@ -95,6 +95,12 @@ const Home = () => {
   const [commentCounts, setCommentCounts] = useState<Record<string, number>>({});
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const { showToast } = useToast();
+
+  useEffect(() => {
+    if (!authLoading && user) {
+      router.push('/dashboard');
+    }
+  }, [authLoading, user, router]);
 
   useEffect(() => {
     // Load the podcasts from the database
@@ -130,8 +136,8 @@ const Home = () => {
     loadPodcasts();
     
     // Load liked podcasts from localStorage if user is logged in
-    if (status === 'authenticated' && session?.user) {
-      const userId = (session.user as any)?.id;
+    if (user) {
+      const userId = user.id;
       if (userId) {
         const likedPodcastsString = localStorage.getItem(`likes_${userId}`);
         if (likedPodcastsString) {
@@ -144,17 +150,17 @@ const Home = () => {
         }
       }
     }
-  }, [status, session, showToast]);
+  }, [authLoading, user, showToast]);
 
   // Save liked podcasts to localStorage when they change
   useEffect(() => {
-    if (status === 'authenticated' && session?.user) {
-      const userId = (session.user as any)?.id;
+    if (user) {
+      const userId = user.id;
       if (userId) {
         localStorage.setItem(`likes_${userId}`, JSON.stringify(Array.from(likedPodcasts)));
       }
     }
-  }, [likedPodcasts, status, session]);
+  }, [likedPodcasts, authLoading, user]);
 
   const togglePlay = (podcastId: string) => {
     try {
@@ -216,7 +222,7 @@ const Home = () => {
   };
 
   const toggleLike = (podcastId: string) => {
-    if (status !== 'authenticated') {
+    if (!user) {
       toast.error('Please sign in to like podcasts', {
         icon: '🔒',
       });
@@ -266,9 +272,13 @@ const Home = () => {
     return commentCounts[podcastId] || 0;
   };
 
-  const handleSignIn = useCallback(() => {
-    signIn(undefined, { callbackUrl: '/' });
-  }, []);
+  if (authLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-pulse text-primary-600">Loading...</div>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -277,110 +287,6 @@ const Home = () => {
       </div>
     );
   }
-
-  if (status === 'unauthenticated') {
-  return (
-      <div className="min-h-screen flex flex-col md:flex-row w-full">
-        {/* Left column - Full height image */}
-        <div className="w-full md:w-1/2 relative min-h-[40vh] md:min-h-screen bg-gradient-to-br from-gray-900 to-primary-900">
-          <div className="absolute inset-0 opacity-40">
-            <Image 
-              src="/images/podcast-hero.jpg" 
-              alt="People enjoying podcasts"
-              fill
-              style={{ objectFit: 'cover' }}
-              priority
-            />
-          </div>
-          <div className="relative z-10 flex flex-col justify-center items-center h-full p-10 text-center">
-            <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold mb-6">
-              Discover the world of <span className="text-primary-500">podcasts</span>
-            </h1>
-            <p className="text-xl md:text-2xl mb-8 max-w-lg">
-              Listen, create, and share amazing audio content with our community.
-            </p>
-            <div className="grid grid-cols-2 gap-8 w-full max-w-md">
-              <div className="flex flex-col items-center">
-                <FaHeadphones className="text-4xl text-primary-500 mb-3" />
-                <h3 className="text-lg font-bold">Listen</h3>
-                <p className="text-sm text-gray-300">Discover new content</p>
-              </div>
-              <div className="flex flex-col items-center">
-                <FaMicrophone className="text-4xl text-primary-500 mb-3" />
-                <h3 className="text-lg font-bold">Create</h3>
-                <p className="text-sm text-gray-300">Share your voice</p>
-              </div>
-              <div className="flex flex-col items-center">
-                <FaHeart className="text-4xl text-primary-500 mb-3" />
-                <h3 className="text-lg font-bold">Engage</h3>
-                <p className="text-sm text-gray-300">Like and comment</p>
-            </div>
-              <div className="flex flex-col items-center">
-                <FaUserFriends className="text-4xl text-primary-500 mb-3" />
-                <h3 className="text-lg font-bold">Connect</h3>
-                <p className="text-sm text-gray-300">Build your network</p>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        {/* Right column - Authentication */}
-        <div className="w-full md:w-1/2 flex flex-col justify-center items-center p-8 md:p-16">
-          <div className="w-full max-w-md">
-            <FaMicrophone className="text-5xl text-primary-500 mx-auto mb-6" />
-            <h2 className="text-3xl font-bold text-center mb-2">Welcome to PodcastApp</h2>
-            <p className="text-gray-400 text-center mb-8">
-              Join our community to discover and share amazing podcasts with creators from around the world.
-            </p>
-            
-            <div className="space-y-4 mb-8">
-              <button 
-                onClick={handleSignIn}
-                className="w-full bg-primary-500 hover:bg-primary-600 text-white font-bold py-3 px-6 rounded-lg transition-colors"
-              >
-                Log in
-              </button>
-              <Link 
-                href="/signup"
-                className="w-full block text-center bg-transparent border border-primary-500 text-primary-500 hover:bg-primary-500/10 font-bold py-3 px-6 rounded-lg transition-colors"
-              >
-                Sign up
-          </Link>
-            </div>
-            
-            <div className="border-t border-gray-700 pt-8 mt-4">
-              <h3 className="text-lg font-semibold mb-4">Popular Podcasts</h3>
-              <div className="space-y-3">
-                {podcasts.slice(0, 3).map((podcast) => (
-                  <div key={podcast.id} className="flex items-center p-2 hover:bg-gray-800 rounded-lg transition-colors">
-                    <div className="w-12 h-12 relative rounded-lg overflow-hidden mr-3">
-                      <Image
-                        src={podcast.coverImage || `https://placehold.co/100/5f33e1/ffffff?text=${podcast.title[0]}`}
-                        alt={podcast.title}
-                        width={48}
-                        height={48}
-                        className="object-cover"
-                      />
-              </div>
-              <div>
-                      <h4 className="font-medium line-clamp-1">{podcast.title}</h4>
-                      <p className="text-gray-400 text-sm line-clamp-1">{podcast.user?.name || 'Unknown creator'}</p>
-              </div>
-                </div>
-                ))}
-                <button 
-                  onClick={handleSignIn}
-                  className="text-primary-500 hover:underline text-sm font-medium mt-2"
-                >
-                  Sign in to explore more
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-    </div>
-  );
-}
 
   return (
     <div className="divide-y divide-gray-800">
@@ -404,7 +310,7 @@ const Home = () => {
               Create your first podcast
             </Link>
           </p>
-    </div>
+        </div>
       )}
     </div>
   );

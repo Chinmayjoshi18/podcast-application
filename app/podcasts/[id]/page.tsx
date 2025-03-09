@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useSupabase } from '@/app/providers/SupabaseProvider';
 import Image from 'next/image';
 import Link from 'next/link';
 import { FaPlay, FaPause, FaHeart, FaRegHeart, FaComment, FaShareAlt, FaArrowLeft, FaPaperPlane, FaEdit, FaSave, FaTimes } from 'react-icons/fa';
@@ -12,7 +12,7 @@ import { Podcast, getAllPodcasts, updatePodcast } from '@/lib/storage';
 const PodcastDetailPage = () => {
   const params = useParams();
   const router = useRouter();
-  const { data: session, status } = useSession();
+  const { user, isLoading: authLoading } = useSupabase();
   const [podcast, setPodcast] = useState<Podcast | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -45,17 +45,14 @@ const PodcastDetailPage = () => {
           });
           
           // Check if user has liked this podcast
-          if (status === 'authenticated' && session?.user) {
-            const userId = (session.user as any)?.id;
-            if (userId) {
-              const likedPodcastsString = localStorage.getItem(`likes_${userId}`);
-              if (likedPodcastsString) {
-                try {
-                  const likedPodcasts = JSON.parse(likedPodcastsString);
-                  setIsLiked(likedPodcasts.includes(podcastId));
-                } catch (error) {
-                  console.error("Error parsing liked podcasts:", error);
-                }
+          if (user && user.id) {
+            const likedPodcastsString = localStorage.getItem(`likes_${user.id}`);
+            if (likedPodcastsString) {
+              try {
+                const likedPodcasts = JSON.parse(likedPodcastsString);
+                setIsLiked(likedPodcasts.includes(podcastId));
+              } catch (error) {
+                console.error("Error parsing liked podcasts:", error);
               }
             }
           }
@@ -93,7 +90,7 @@ const PodcastDetailPage = () => {
     };
     
     fetchPodcast();
-  }, [params.id, router, session, status]);
+  }, [params.id, router, user]);
 
   // Handle input change for edit form
   const handleEditChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -151,10 +148,9 @@ const PodcastDetailPage = () => {
 
   // Check if current user is the podcast owner
   const isOwner = () => {
-    if (!podcast || !session?.user) return false;
+    if (!podcast || !user) return false;
     
-    const userId = (session.user as any)?.id;
-    return userId === podcast.userId;
+    return user.id === podcast.userId;
   };
 
   const togglePlay = () => {
@@ -204,19 +200,16 @@ const PodcastDetailPage = () => {
   const toggleLike = () => {
     if (!podcast) return;
     
-    if (status !== 'authenticated') {
+    if (!user) {
       toast.error('Please sign in to like podcasts', {
         icon: '🔒',
       });
       return;
     }
     
-    const userId = (session?.user as any)?.id;
-    if (!userId) return;
-    
     // Get current liked podcasts
     let likedPodcasts: string[] = [];
-    const likedPodcastsString = localStorage.getItem(`likes_${userId}`);
+    const likedPodcastsString = localStorage.getItem(`likes_${user.id}`);
     if (likedPodcastsString) {
       try {
         likedPodcasts = JSON.parse(likedPodcastsString);
@@ -253,7 +246,7 @@ const PodcastDetailPage = () => {
     }
     
     // Save updated liked podcasts
-    localStorage.setItem(`likes_${userId}`, JSON.stringify(likedPodcasts));
+    localStorage.setItem(`likes_${user.id}`, JSON.stringify(likedPodcasts));
   };
 
   const handleShare = () => {
@@ -278,7 +271,7 @@ const PodcastDetailPage = () => {
   const handleCommentSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!session) {
+    if (!user) {
       toast.error('Please sign in to comment');
       return;
     }
@@ -292,8 +285,8 @@ const PodcastDetailPage = () => {
     const newComment = {
       id: Date.now().toString(),
       user: {
-        name: session.user?.name || 'Anonymous',
-        image: session.user?.image || `https://placehold.co/100/5f33e1/ffffff?text=${session.user?.name?.[0] || 'A'}`
+        name: user.user_metadata?.full_name || 'Anonymous',
+        image: user.user_metadata?.avatar_url || `https://placehold.co/100/5f33e1/ffffff?text=${user.user_metadata?.full_name?.[0] || 'A'}`
       },
       text: comment,
       createdAt: new Date().toISOString()
@@ -321,10 +314,10 @@ const PodcastDetailPage = () => {
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
   };
 
-  if (isLoading) {
+  if (authLoading || isLoading) {
     return (
-      <div className="flex justify-center items-center min-h-screen">
-        <div className="animate-pulse text-primary-600">Loading podcast...</div>
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-pulse text-primary-600">Loading...</div>
       </div>
     );
   }
@@ -503,8 +496,8 @@ const PodcastDetailPage = () => {
               <div className="flex-shrink-0">
                 <div className="w-10 h-10 rounded-full overflow-hidden relative">
                   <Image
-                    src={session?.user?.image || `https://placehold.co/100x100`}
-                    alt={session?.user?.name || 'User'}
+                    src={user?.user_metadata?.avatar_url || `https://placehold.co/100x100`}
+                    alt={user?.user_metadata?.full_name || 'User'}
                     width={40}
                     height={40}
                     className="object-cover"
@@ -530,7 +523,7 @@ const PodcastDetailPage = () => {
                   <button 
                     type="submit"
                     className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-full flex items-center space-x-1 disabled:opacity-50 disabled:cursor-not-allowed"
-                    disabled={!comment.trim() || !session}
+                    disabled={!comment.trim() || !user}
                   >
                     <FaPaperPlane size={14} className="mr-2" />
                     <span>Comment</span>
