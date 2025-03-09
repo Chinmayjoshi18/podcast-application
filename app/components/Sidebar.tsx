@@ -76,7 +76,7 @@ export default function Sidebar() {
       <div className="px-3 mb-6">
         <Link
           href="/record"
-          className="flex items-center justify-center bg-primary hover:bg-primary-600 transition-colors rounded-full py-3 px-6 w-full"
+          className="flex items-center justify-center bg-primary hover:bg-primary/90 transition-colors rounded-full py-3 px-6 w-full"
         >
           <FaPlus className="h-5 w-5 mr-2" />
           <span className="font-bold">Record</span>
