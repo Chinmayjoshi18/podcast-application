@@ -1,5 +1,6 @@
 // Client-side wrapper for Prisma database operations
 import prisma from './prismadb';
+import { uploadAudioFile } from './fileStorage';
 
 export interface Podcast {
   id: string;
@@ -23,59 +24,24 @@ export interface Podcast {
   tags?: { id: string; name: string }[];
 }
 
-// Upload audio file directly to Cloudinary with chunking
+// Upload audio file to Supabase Storage
 export const uploadLargeFile = async (
   file: File,
   onProgress?: (progress: number) => void,
   fileType: string = 'auto',
-  folder: string = 'podcasts'
 ): Promise<string> => {
-  try {
-    // Start progress updates
-    let progress = 0;
-    const progressInterval = setInterval(() => {
-      progress += Math.floor(Math.random() * 3) + 1; // Increase by 1-3% each time
-      if (progress > 90) {
-        progress = 90; // Cap at 90% until actually complete
-        clearInterval(progressInterval);
-      }
-      if (onProgress) onProgress(progress);
-    }, 800);
-    
-    // Prepare the FormData
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('fileType', fileType);
-    formData.append('folder', folder);
-    
-    console.log(`Uploading file: ${file.name} (${(file.size / (1024 * 1024)).toFixed(2)}MB)`);
-    
-    // Send to our server-side API endpoint
-    const response = await fetch('/api/upload', {
-      method: 'POST',
-      body: formData,
-    });
-    
-    // Clear the interval once complete
-    clearInterval(progressInterval);
-    
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(`Upload failed: ${errorData.error || response.statusText}`);
-    }
-    
-    const data = await response.json();
-    
-    if (!data.success) {
-      throw new Error(`Upload failed: ${data.error || 'Unknown error'}`);
-    }
-    
-    if (onProgress) onProgress(100); // Set to 100% when complete
-    return data.url;
-  } catch (error) {
-    console.error('Error uploading file:', error);
-    throw error;
-  }
+  if (!file) throw new Error('No file provided');
+  
+  // Determine folder based on file type
+  const folder = fileType === 'audio' ? 'podcast-audio' : 'images';
+  
+  // Use our file storage implementation
+  return uploadAudioFile(
+    file,
+    folder,
+    file.name,
+    onProgress || (() => {})
+  );
 };
 
 // These functions can be used client-side to make fetch requests to the API
@@ -122,21 +88,22 @@ export const getPublicPodcasts = async (): Promise<Podcast[]> => {
   }
 };
 
-// Add a new podcast
-export const addPodcast = async (podcastData: Omit<Podcast, 'id' | 'createdAt' | 'updatedAt'>): Promise<Podcast> => {
-  try {
-    const response = await fetch('/api/podcasts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(podcastData),
-    });
-    
-    if (!response.ok) throw new Error('Failed to create podcast');
-    return response.json();
-  } catch (error) {
-    console.error('Error creating podcast:', error);
-    throw error;
+// Create a new podcast in the database
+export const addPodcast = async (podcast: Omit<Podcast, 'id' | 'createdAt' | 'updatedAt'>): Promise<Podcast> => {
+  const response = await fetch('/api/podcasts', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(podcast),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || 'Failed to create podcast');
   }
+
+  return response.json();
 };
 
 // Update an existing podcast

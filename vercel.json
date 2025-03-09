@@ -1,5 +1,5 @@
 {
-  "buildCommand": "node lib/env-sanitizer.js && npm run prisma:setup && SKIP_TYPESCRIPT_CHECK=true next build",
+  "buildCommand": "npm run prisma:setup && SKIP_TYPESCRIPT_CHECK=true next build",
   "installCommand": "npm install --legacy-peer-deps",
   "framework": "nextjs",
   "outputDirectory": ".next",

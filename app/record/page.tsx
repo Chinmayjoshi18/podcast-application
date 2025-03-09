@@ -6,7 +6,7 @@ import { useSession } from 'next-auth/react';
 import toast from 'react-hot-toast';
 import { FaMicrophone, FaUpload, FaStop, FaPlay, FaPause, FaTrash, FaSave, FaGlobe, FaLock, FaArrowLeft, FaImage, FaExclamationTriangle } from 'react-icons/fa';
 import { addPodcast } from '@/lib/storage';
-import { uploadAudioFile, getUploadProgress, startFileUpload, isFileUploading, isFileUploaded, getUploadedFileUrl } from '@/lib/cloudStorage';
+import { uploadAudioFile, getUploadProgress, startFileUpload, isFileUploading, isFileUploaded, getUploadedFileUrl } from '@/lib/fileStorage';
 import Link from 'next/link';
 import { MdMic, MdStop, MdPlayArrow, MdPause, MdFileUpload, MdImage } from 'react-icons/md';
 import axios from 'axios';
