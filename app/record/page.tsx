@@ -273,129 +273,136 @@ const RecordPage = () => {
     }
   };
 
+  /**
+   * Publish the podcast with comprehensive error handling
+   * and proper upload tracking
+   */
   const handlePublish = async () => {
-    if (!audioBlob && !selectedFile) {
-      toast.error('Please record or upload audio first');
+    if (isSubmitting) {
+      toast.error('Already processing a submission, please wait...');
       return;
-    }
-
-    if (!formData.title) {
-      toast.error('Please provide a title');
-      return;
-    }
-
-    if (!session?.user) {
-      toast.error('You must be logged in to publish a podcast');
-      return;
-    }
-
-    setIsSubmitting(true);
-    
-    // If we're not already showing upload progress, initialize it
-    if (uploadStatus === 'idle') {
-      setUploadProgress(0);
-      setUploadStatus('uploading');
     }
 
     try {
-      // Get the audio file (either recorded or uploaded)
-      const audioFile = selectedFile || new File([audioBlob!], `podcast_${Date.now()}.wav`, { 
-        type: audioBlob!.type 
-      });
+      setIsSubmitting(true);
+      setUploadStatus('processing');
       
-      console.log('Audio file to upload:', { 
-        name: audioFile.name, 
-        size: `${Math.round(audioFile.size / 1024)}KB`, 
-        type: audioFile.type 
-      });
-      
-      // Start processing the cover image if it exists
-      let coverImageUrl = '';
-      let coverImageUploadPromise = Promise.resolve('');
-      
-      if (coverImage) {
-        console.log('Cover image to upload:', { 
-          name: coverImage.name, 
-          size: `${Math.round(coverImage.size / 1024)}KB`, 
-          type: coverImage.type 
-        });
-        
-        // Upload cover image and get URL
-        // Note: We're not showing detailed progress for image upload as it's generally smaller
-        coverImageUploadPromise = uploadAudioFile(
-          coverImage, 
-          'cover-images', 
-          `cover_${Date.now()}_${coverImage.name}`,
-          (progress) => console.log(`Cover image upload progress: ${progress}%`)
-        );
+      // Validate form data
+      if (!formData.title.trim()) {
+        toast.error('Please add a title for your podcast');
+        setUploadStatus('idle');
+        return;
       }
       
-      // For audio file, check if we already have an uploaded URL
-      let audioFileUrl;
+      if (!selectedFile && !audioBlob) {
+        toast.error('Please record or upload an audio file');
+        setUploadStatus('idle');
+        return;
+      }
       
-      if (uploadedFileUrl && uploadStatus === 'complete') {
-        // If we already have a URL from the background upload, use it
-        console.log('Using pre-uploaded audio file URL:', uploadedFileUrl);
-        audioFileUrl = uploadedFileUrl;
+      // Create tracking object for full upload process
+      let publishTracker = {
+        audioUploadComplete: false,
+        audioUrl: '',
+        coverImageComplete: coverImage ? false : true, // True if no cover image selected
+        coverImageUrl: '',
+        metadataComplete: false,
+        podcast: null,
+        error: null
+      };
+      
+      // Show toast notification for long process
+      const publishToastId = toast.loading('Publishing your podcast...');
+
+      // Upload cover image if selected
+      let coverImageUploadPromise: Promise<string> = Promise.resolve('');
+      if (coverImage) {
+        console.log('Starting cover image upload...');
+        toast.loading('Uploading cover image...', { id: publishToastId });
         
-        // Make sure progress shows complete
-        setUploadProgress(100);
-        toast.success('Using already uploaded file!');
-      } else {
-        // Check if this file has already been uploaded based on its ID
-        const fileId = `${audioFile.name}_${audioFile.lastModified}`;
+        try {
+          coverImageUploadPromise = startFileUpload(
+            coverImage, 
+            'images',
+            (progress) => {
+              console.log(`Cover image upload progress: ${progress}%`);
+            }
+          ).then(url => {
+            console.log('Cover image upload complete:', url);
+            publishTracker.coverImageComplete = true;
+            publishTracker.coverImageUrl = url;
+            return url;
+          });
+        } catch (error) {
+          console.error('Error starting cover image upload:', error);
+          toast.error('Failed to upload cover image', { id: publishToastId });
+          publishTracker.error = 'Cover image upload failed';
+          throw new Error('Cover image upload failed: ' + error.message);
+        }
+      }
+      
+      // Upload audio file
+      let audioFileUrl = '';
+      const audioFile = selectedFile || new File([audioBlob!], `recording-${Date.now()}.webm`, { 
+        type: 'audio/webm' 
+      });
+      
+      const fileId = `${audioFile.name}_${audioFile.size}_${audioFile.lastModified}`;
+      
+      try {
+        // Check if the file is already uploaded in the background
         if (isFileUploaded(fileId)) {
           const cachedUrl = getUploadedFileUrl(fileId);
           if (cachedUrl) {
             console.log('Using cached audio file URL:', cachedUrl);
             audioFileUrl = cachedUrl;
-            setUploadProgress(100);
-            toast.success('Using already uploaded file!');
+            publishTracker.audioUploadComplete = true;
+            publishTracker.audioUrl = cachedUrl;
+            toast.loading('Using already uploaded audio...', { id: publishToastId });
           } else {
-            // Upload the file if not already uploaded
-            console.log('Starting audio file upload for publish...');
-            audioFileUrl = await uploadAudioFile(
-              audioFile,
-              'podcast-audio',
-              `podcast_${Date.now()}_${audioFile.name}`,
-              (progress) => {
-                setUploadProgress(progress);
-                console.log(`Audio upload progress: ${progress}%`);
-              }
-            );
+            // This should rarely happen - cached but no URL
+            throw new Error('Cached file URL not found');
           }
         } else if (isFileUploading(fileId)) {
           // If file is currently uploading, wait for it to complete
           console.log('File is currently uploading, waiting for completion...');
-          toast.loading('Waiting for upload to complete...');
+          toast.loading('Waiting for audio upload to complete...', { id: publishToastId });
           
-          // Poll until upload completes
-          while (!isFileUploaded(fileId)) {
+          // Wait for completion with timeout
+          const startTime = Date.now();
+          const MAX_WAIT_TIME = 5 * 60 * 1000; // 5 minutes
+          
+          while (isFileUploading(fileId)) {
+            // Check for timeout
+            if (Date.now() - startTime > MAX_WAIT_TIME) {
+              throw new Error('Upload wait timeout exceeded');
+            }
+            
+            // Wait and update progress
             await new Promise(resolve => setTimeout(resolve, 500));
             const progress = getUploadProgress(fileId);
             setUploadProgress(progress);
+            
+            // Update toast with progress
+            toast.loading(`Audio upload: ${progress}%...`, { id: publishToastId });
           }
           
           // Once complete, get the URL
           const cachedUrl = getUploadedFileUrl(fileId);
           if (cachedUrl) {
             audioFileUrl = cachedUrl;
-            toast.success('Upload completed!');
+            publishTracker.audioUploadComplete = true;
+            publishTracker.audioUrl = cachedUrl;
+            toast.loading('Audio upload complete!', { id: publishToastId });
           } else {
-            // Fallback to regular upload if something went wrong
-            audioFileUrl = await uploadAudioFile(
-              audioFile,
-              'podcast-audio',
-              `podcast_${Date.now()}_${audioFile.name}`,
-              (progress) => {
-                setUploadProgress(progress);
-                console.log(`Audio upload progress: ${progress}%`);
-              }
-            );
+            // Something went wrong with the upload
+            throw new Error('Upload completed but no URL available');
           }
         } else {
-          // Upload the file if not already uploading or uploaded
+          // Start a new upload if not already uploading or uploaded
           console.log('Starting audio file upload for publish...');
+          toast.loading('Uploading audio file...', { id: publishToastId });
+          
           audioFileUrl = await uploadAudioFile(
             audioFile,
             'podcast-audio',
@@ -403,39 +410,97 @@ const RecordPage = () => {
             (progress) => {
               setUploadProgress(progress);
               console.log(`Audio upload progress: ${progress}%`);
+              toast.loading(`Audio upload: ${progress}%...`, { id: publishToastId });
             }
           );
+          
+          publishTracker.audioUploadComplete = true;
+          publishTracker.audioUrl = audioFileUrl;
+        }
+      } catch (error) {
+        console.error('Error uploading audio file:', error);
+        toast.error(`Audio upload failed: ${error.message}`, { id: publishToastId });
+        publishTracker.error = 'Audio upload failed';
+        throw error;
+      }
+      
+      // Wait for cover image upload if applicable
+      let coverImageUrl = '';
+      if (coverImage) {
+        try {
+          toast.loading('Finalizing cover image...', { id: publishToastId });
+          coverImageUrl = await coverImageUploadPromise;
+        } catch (error) {
+          console.error('Error with cover image upload:', error);
+          toast.error('Cover image upload failed, continuing with default', { id: publishToastId });
+          // We'll continue without the cover image rather than failing the whole process
         }
       }
       
-      // Wait for cover image upload to complete
-      if (coverImage) {
-        coverImageUrl = await coverImageUploadPromise;
+      // All uploads are complete, create podcast in database
+      console.log('All uploads complete. Publishing podcast...');
+      toast.loading('Saving podcast to database...', { id: publishToastId });
+      
+      try {
+        const podcastData = {
+          userId: session?.user?.id || '',
+          title: formData.title.trim(),
+          description: formData.description.trim() || '',
+          audioUrl: audioFileUrl,
+          coverImage: coverImageUrl || '',
+          isPublic: formData.isPublic,
+          user: {
+            id: session?.user?.id || '',
+            name: session?.user?.name || '',
+            image: session?.user?.image || '',
+          },
+        };
+        
+        const newPodcast = await addPodcast(podcastData);
+        
+        publishTracker.metadataComplete = true;
+        publishTracker.podcast = newPodcast;
+        
+        console.log('Podcast published successfully:', newPodcast);
+        toast.success('Podcast published successfully!', { id: publishToastId });
+        
+        // Reset form after successful submission
+        setUploadStatus('complete');
+        
+        // Redirect to dashboard after short delay
+        setTimeout(() => {
+          router.push('/dashboard');
+        }, 1500);
+      } catch (error) {
+        console.error('Error saving podcast to database:', error);
+        toast.error(`Failed to save podcast: ${error.message}`, { id: publishToastId });
+        
+        // Special error handling for database errors
+        if (audioFileUrl) {
+          toast.error('Note: Your audio file was uploaded successfully and can be reused');
+        }
+        
+        publishTracker.error = 'Database save failed';
+        throw error;
+      }
+    } catch (error) {
+      console.error('Error in publish process:', error);
+      setUploadStatus('error');
+      
+      // Provide detailed error message based on what stage failed
+      let errorMessage = 'Publication failed. Please try again.';
+      
+      if (error.message?.includes('upload')) {
+        errorMessage = `File upload error: ${error.message}`;
+      } else if (error.message?.includes('network') || error.message?.includes('internet')) {
+        errorMessage = 'Network error. Please check your internet connection and try again.';
+      } else if (error.message?.includes('timeout')) {
+        errorMessage = 'The operation timed out. Please try again with a better connection.';
+      } else if (error.message?.includes('database') || error.message?.includes('save')) {
+        errorMessage = 'Failed to save podcast details. Your files were uploaded successfully.';
       }
       
-      // Both uploads are complete
-      console.log('All uploads complete. Publishing podcast...');
-      setUploadStatus('processing');
-      
-      // Create podcast
-      await addPodcast({
-        userId: session.user.id,
-        title: formData.title,
-        description: formData.description || '',
-        audioUrl: audioFileUrl,
-        coverImage: coverImageUrl,
-        isPublic: formData.isPublic,
-      });
-      
-      toast.success('Podcast published successfully!');
-      setUploadStatus('complete');
-      
-      // Reset form after successful submission
-      router.push('/dashboard');
-    } catch (error) {
-      console.error('Error publishing podcast:', error);
-      toast.error(`Failed to publish podcast: ${error.message || 'Please try again'}`);
-      setUploadStatus('error');
+      toast.error(errorMessage);
     } finally {
       setIsSubmitting(false);
     }
