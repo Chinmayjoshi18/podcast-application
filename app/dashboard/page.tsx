@@ -9,6 +9,7 @@ import { FaMicrophone, FaPodcast, FaUserFriends, FaChartLine, FaPlus, FaGlobe, F
 import { toast } from 'react-hot-toast';
 import { getUserPodcasts, updatePodcast, deletePodcast, Podcast } from '@/lib/storage';
 import { useSupabase } from '@/app/providers/SupabaseProvider';
+import { supabase } from '@/lib/supabaseClient';
 import PodcastCard from '@/app/components/PodcastCard';
 
 // Dashboard stat card

@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabaseClient';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { FaArrowLeft } from 'react-icons/fa';
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClientComponent } from '@/lib/supabaseClient';
 import Image from 'next/image';
 
 export default function Signup() {
@@ -15,7 +15,7 @@ export default function Signup() {
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
   const redirectPath = searchParams.get('redirect') || '/dashboard';
-  const [supabase] = useState(() => createClientComponentClient());
+  const [supabase] = useState(() => createClientComponent());
   const [isLoading, setIsLoading] = useState(true);
 
   // Check for auth errors in URL parameters

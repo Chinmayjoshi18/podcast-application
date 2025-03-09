@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
-import { getCurrentUserId, supabase } from '@/lib/supabaseClient';
+import { supabase, getCurrentUserId } from '@/lib/supabaseClient';
 
 // Import AudioRecorder dynamically with SSR disabled
 const ClientAudioRecorder = dynamic(

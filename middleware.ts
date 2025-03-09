@@ -19,6 +19,8 @@ const authRoutes = [
 
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
+  
+  // Create middleware client with request and response
   const supabase = createMiddlewareClient({ req, res });
   
   // Get the current path from the URL

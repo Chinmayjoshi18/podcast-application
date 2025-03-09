@@ -2,7 +2,7 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { FaPlay, FaHeart, FaComment, FaShare } from 'react-icons/fa'
+import { FaPlay, FaHeart, FaComment, FaShare, FaLock, FaGlobe } from 'react-icons/fa'
 import { formatDistanceToNow } from 'date-fns'
 
 interface Podcast {
@@ -11,15 +11,17 @@ interface Podcast {
   description: string
   coverImage: string
   audioUrl: string
-  duration: number
+  duration?: number
   createdAt: string
-  author: {
-    name: string
-    image: string
+  user?: {
+    id: string
+    name?: string
+    image?: string
   }
-  listens: number
-  likes: number
-  comments: number
+  listens?: number
+  likes?: number
+  comments?: number
+  isPublic?: boolean
 }
 
 interface PodcastCardProps {
@@ -27,7 +29,8 @@ interface PodcastCardProps {
 }
 
 export default function PodcastCard({ podcast }: PodcastCardProps) {
-  const formatDuration = (seconds: number) => {
+  const formatDuration = (seconds?: number) => {
+    if (!seconds) return '0:00';
     const minutes = Math.floor(seconds / 60)
     const remainingSeconds = Math.floor(seconds % 60)
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
@@ -49,6 +52,11 @@ export default function PodcastCard({ podcast }: PodcastCardProps) {
         <div className="absolute bottom-4 right-4 text-white text-sm">
           {formatDuration(podcast.duration)}
         </div>
+        {podcast.isPublic !== undefined && (
+          <div className="absolute top-4 right-4 text-white bg-black/50 rounded-full p-2">
+            {podcast.isPublic ? <FaGlobe /> : <FaLock />}
+          </div>
+        )}
       </div>
       
       <div className="p-4">
@@ -64,14 +72,18 @@ export default function PodcastCard({ podcast }: PodcastCardProps) {
         
         <div className="flex items-center justify-between">
           <div className="flex items-center">
-            <Image
-              src={podcast.author.image || '/default-avatar.png'}
-              alt={podcast.author.name}
-              width={24}
-              height={24}
-              className="rounded-full mr-2"
-            />
-            <span className="text-sm text-gray-300">{podcast.author.name}</span>
+            {podcast.user && (
+              <>
+                <Image
+                  src={podcast.user.image || '/default-avatar.png'}
+                  alt={podcast.user.name || 'User'}
+                  width={24}
+                  height={24}
+                  className="rounded-full mr-2"
+                />
+                <span className="text-sm text-gray-300">{podcast.user.name || 'User'}</span>
+              </>
+            )}
           </div>
           <span className="text-xs text-gray-400">
             {formatDistanceToNow(new Date(podcast.createdAt), { addSuffix: true })}
@@ -82,15 +94,15 @@ export default function PodcastCard({ podcast }: PodcastCardProps) {
           <div className="flex items-center space-x-4">
             <button className="flex items-center text-gray-400 hover:text-indigo-400 transition-colors">
               <FaPlay className="mr-1" />
-              <span className="text-xs">{podcast.listens}</span>
+              <span className="text-xs">{podcast.listens || 0}</span>
             </button>
             <button className="flex items-center text-gray-400 hover:text-red-400 transition-colors">
               <FaHeart className="mr-1" />
-              <span className="text-xs">{podcast.likes}</span>
+              <span className="text-xs">{podcast.likes || 0}</span>
             </button>
             <button className="flex items-center text-gray-400 hover:text-blue-400 transition-colors">
               <FaComment className="mr-1" />
-              <span className="text-xs">{podcast.comments}</span>
+              <span className="text-xs">{podcast.comments || 0}</span>
             </button>
           </div>
           <button className="text-gray-400 hover:text-white transition-colors">
