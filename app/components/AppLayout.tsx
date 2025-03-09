@@ -1,40 +1,40 @@
 'use client';
 
-import { useSession } from 'next-auth/react';
+import { usePathname } from 'next/navigation';
 import Sidebar from './Sidebar';
 import RightSidebar from './RightSidebar';
+import { useSupabase } from '../providers/SupabaseProvider';
 
-interface AppLayoutProps {
-  children: React.ReactNode;
-}
+// Routes that should use the dashboard layout (with sidebars)
+const dashboardRoutes = [
+  '/dashboard',
+  '/explore',
+  '/profile',
+  '/messages',
+  '/notifications',
+  '/settings',
+  '/record',
+  '/podcasts',
+];
 
-export default function AppLayout({ children }: AppLayoutProps) {
-  const { status } = useSession();
-  const isAuthenticated = status === 'authenticated';
+export default function AppLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const { user, isLoading } = useSupabase();
+  
+  // Check if current path should use dashboard layout
+  const isDashboardRoute = dashboardRoutes.some(route => pathname?.startsWith(route));
+  
+  // Don't show sidebars if not logged in or not on a dashboard route
+  const showSidebars = !isLoading && user && isDashboardRoute;
 
-  // For non-authenticated users, render children directly without the three-column structure
-  if (!isAuthenticated) {
-    return <>{children}</>;
-  }
-
-  // For authenticated users, render the three-column structure
   return (
-    <div className="min-h-screen flex justify-center">
-      <div className="flex max-w-7xl w-full mx-auto">
-        {/* Left Sidebar - fixed width like Twitter */}
-        <div className="w-[275px] min-w-[275px]">
-          <Sidebar />
-        </div>
-        
-        {/* Main Content - 600px fixed width like Twitter */}
-        <main className="w-[600px] min-w-[600px] min-h-screen border-l border-r border-gray-800">
+    <div className="min-h-screen">
+      <div className="flex">
+        {showSidebars && <Sidebar />}
+        <main className={`flex-1 ${showSidebars ? 'max-w-[600px] mx-auto' : 'w-full'}`}>
           {children}
         </main>
-        
-        {/* Right Sidebar - fixed width like Twitter */}
-        <div className="w-[350px] min-w-[350px]">
-          <RightSidebar />
-        </div>
+        {showSidebars && <RightSidebar />}
       </div>
     </div>
   );

@@ -1,188 +1,91 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { signIn, useSession } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
+import React, { useEffect, useState } from 'react';
+import { Auth } from '@supabase/auth-ui-react';
+import { ThemeSupa } from '@supabase/auth-ui-shared';
+import { supabase } from '@/lib/supabaseClient';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import toast from 'react-hot-toast';
-import { FaGoogle, FaGithub } from 'react-icons/fa';
+import { FaArrowLeft } from 'react-icons/fa';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import Image from 'next/image';
 
-const Login = () => {
+export default function Login() {
   const router = useRouter();
-  const { status } = useSession();
-  const [isLoading, setIsLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    email: '',
-    password: '',
-  });
+  const searchParams = useSearchParams();
+  const [error, setError] = useState<string | null>(null);
+  const redirectPath = searchParams.get('redirect') || '/dashboard';
+  const [supabase] = useState(() => createClientComponentClient());
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Check for auth errors in URL parameters
+  useEffect(() => {
+    const errorParam = searchParams.get('error');
+    if (errorParam) {
+      setError(
+        errorParam === 'auth-error' 
+          ? 'Authentication failed. Please try again.' 
+          : 'An error occurred. Please try again.'
+      );
+    }
+  }, [searchParams]);
 
   useEffect(() => {
-    if (status === 'authenticated') {
-      router.push('/dashboard');
-    }
-  }, [status, router]);
-
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setIsLoading(true);
-
-    try {
-      const result = await signIn('credentials', {
-        email: formData.email,
-        password: formData.password,
-        redirect: false,
-      });
-
-      if (result?.error) {
-        toast.error('Invalid credentials');
-      } else {
-        toast.success('Successfully logged in!');
+    const checkUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
         router.push('/dashboard');
+      } else {
+        setIsLoading(false);
       }
-    } catch (error) {
-      toast.error('Login failed');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    };
+    checkUser();
+  }, [router, supabase]);
 
-  const handleSocialLogin = async (provider: string) => {
-    setIsLoading(true);
-    
-    try {
-      await signIn(provider, { 
-        callbackUrl: '/dashboard',
-        redirect: true 
-      });
-    } catch (error) {
-      toast.error('Login failed');
-      setIsLoading(false);
-    }
-  };
-
-  if (status === 'loading' || status === 'authenticated') {
+  if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-pulse text-primary-600">Loading...</div>
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-900 border-t-transparent"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8 bg-white dark:bg-gray-800 p-8 rounded-xl shadow-md">
-        <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900 dark:text-white">
-            Sign in to your account
-          </h2>
-          <p className="mt-2 text-center text-sm text-gray-600 dark:text-gray-400">
-            Don't have an account?{' '}
-            <Link href="/signup" className="font-medium text-primary-600 hover:text-primary-500">
-              Sign up
-            </Link>
-          </p>
+    <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 p-4">
+      <div className="w-full max-w-md space-y-8 rounded-lg bg-white p-8 shadow-md">
+        <div className="text-center">
+          <Image
+            src="/logo.png"
+            alt="Logo"
+            width={80}
+            height={80}
+            className="mx-auto"
+          />
+          <h1 className="mt-4 text-3xl font-bold">Welcome Back</h1>
+          <p className="mt-2 text-gray-600">Sign in to your account</p>
         </div>
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          <div className="rounded-md shadow-sm space-y-4">
-            <div>
-              <label htmlFor="email" className="label">
-                Email address
-              </label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="email"
-                required
-                className="input"
-                placeholder="Email address"
-                value={formData.email}
-                onChange={handleChange}
-                disabled={isLoading}
-                style={{ color: 'black' }}
-              />
-            </div>
-            <div>
-              <label htmlFor="password" className="label">
-                Password
-              </label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                required
-                className="input"
-                placeholder="Password"
-                value={formData.password}
-                onChange={handleChange}
-                disabled={isLoading}
-                style={{ color: 'black' }}
-              />
-            </div>
+        
+        {error && (
+          <div className="bg-red-500/20 border border-red-500 text-red-300 px-4 py-2 rounded-md mb-6">
+            {error}
           </div>
-
-          <div className="flex items-center justify-between">
-            <div className="text-sm">
-              <Link href="/forgot-password" className="font-medium text-primary-600 hover:text-primary-500">
-                Forgot your password?
-              </Link>
-            </div>
-          </div>
-
-          <div>
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="btn btn-primary w-full flex justify-center py-2 px-4"
-            >
-              {isLoading ? 'Signing in...' : 'Sign in'}
-            </button>
-          </div>
-        </form>
-
-        <div className="mt-6">
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-300 dark:border-gray-700"></div>
-            </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400">
-                Or continue with
-              </span>
-            </div>
-          </div>
-
-          <div className="mt-6 grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() => handleSocialLogin('google')}
-              disabled={isLoading}
-              className="btn btn-outline w-full flex items-center justify-center"
-            >
-              <FaGoogle className="mr-2" />
-              Google
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleSocialLogin('github')}
-              disabled={isLoading}
-              className="btn btn-outline w-full flex items-center justify-center"
-            >
-              <FaGithub className="mr-2" />
-              GitHub
-            </button>
-          </div>
+        )}
+        
+        <Auth
+          supabaseClient={supabase}
+          appearance={{ theme: ThemeSupa }}
+          theme="light"
+          providers={['google', 'github']}
+          redirectTo={`${window.location.origin}/auth/callback`}
+        />
+        
+        <div className="mt-4 text-center text-sm text-gray-600">
+          <span>Don&apos;t have an account? </span>
+          <Link href="/signup" className="font-medium text-indigo-600 hover:text-indigo-500">
+            Sign up
+          </Link>
         </div>
       </div>
     </div>
   );
-};
-
-export default Login;
+}

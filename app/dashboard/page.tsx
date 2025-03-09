@@ -8,6 +8,8 @@ import Image from 'next/image';
 import { FaMicrophone, FaPodcast, FaUserFriends, FaChartLine, FaPlus, FaGlobe, FaLock, FaLink, FaCalendarAlt, FaEdit, FaUsers, FaHeart, FaArrowLeft, FaHeadphones, FaPlay, FaMusic, FaCog, FaTrash, FaPlusCircle, FaCamera, FaTimes, FaSave } from 'react-icons/fa';
 import { toast } from 'react-hot-toast';
 import { getUserPodcasts, updatePodcast, deletePodcast, Podcast } from '@/lib/storage';
+import { useSupabase } from '@/app/providers/SupabaseProvider';
+import PodcastCard from '@/app/components/PodcastCard';
 
 // Dashboard stat card
 interface StatCardProps {
@@ -329,6 +331,8 @@ const Dashboard = () => {
     profileImage: '',
     coverImage: 'https://placehold.co/1500x500/3f33e1/ffffff?text=Cover Photo'
   });
+
+  const { user } = useSupabase();
 
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -764,74 +768,7 @@ const Dashboard = () => {
             {podcasts.length > 0 ? (
               <div className="space-y-4">
                 {podcasts.map((podcast) => (
-                  <div
-                    key={podcast.id}
-                    className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 flex flex-col md:flex-row"
-                  >
-                    <div className="flex-shrink-0 w-full md:w-48 h-32 mb-4 md:mb-0 md:mr-4">
-                      <div className="relative w-full h-full rounded-md overflow-hidden">
-                        <Image
-                                  src={podcast.coverImage || "https://placehold.co/300"}
-                          alt={podcast.title}
-                                  fill
-                                  className="object-cover"
-                        />
-                      </div>
-                    </div>
-                    <div className="flex-grow">
-                      <h3 className="text-lg font-semibold mb-2">{podcast.title}</h3>
-                      <p className="text-gray-600 dark:text-gray-400 mb-2">{podcast.description}</p>
-                      <div className="flex flex-wrap gap-4 text-sm text-gray-500 dark:text-gray-400">
-                                {podcast.duration && typeof podcast.duration === 'number' && (
-                        <span>Duration: {formatDuration(podcast.duration)}</span>
-                                )}
-                        <span>Listens: {podcast.listens}</span>
-                        <span>Likes: {podcast.likes}</span>
-                        <span>Published: {formatDate(podcast.createdAt)}</span>
-                                <span className={`flex items-center ${podcast.isPublic ? 'text-green-500' : 'text-amber-500'}`}>
-                                  {podcast.isPublic ? (
-                                    <>
-                                      <FaGlobe className="mr-1" /> Public
-                                    </>
-                                  ) : (
-                                    <>
-                                      <FaLock className="mr-1" /> Private
-                                    </>
-                                  )}
-                                </span>
-                      </div>
-                              <div className="mt-4 flex flex-wrap gap-3">
-                        <Link
-                          href={`/podcasts/${podcast.id}`}
-                          className="text-primary-600 hover:text-primary-800 dark:hover:text-primary-400 font-medium"
-                        >
-                          View
-                        </Link>
-                                <button 
-                                  onClick={() => togglePrivacy(podcast.id)}
-                                  className="text-primary-600 hover:text-primary-800 dark:hover:text-primary-400 font-medium"
-                                >
-                                  {podcast.isPublic ? 'Make Private' : 'Make Public'}
-                                </button>
-                                <button 
-                                  onClick={() => handleDeletePodcast(podcast.id)}
-                                  className="text-red-600 hover:text-red-800 dark:hover:text-red-400 font-medium"
-                                >
-                                  Delete
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    navigator.clipboard.writeText(`${window.location.origin}/podcasts/${podcast.id}`);
-                                    toast.success('Link copied to clipboard');
-                                  }}
-                                  className="text-gray-600 hover:text-gray-800 dark:hover:text-gray-400 font-medium flex items-center"
-                                >
-                                  <FaLink className="mr-1" />
-                                  Share
-                                </button>
-                      </div>
-                    </div>
-                  </div>
+                  <PodcastCard key={podcast.id} podcast={podcast} />
                 ))}
               </div>
             ) : (

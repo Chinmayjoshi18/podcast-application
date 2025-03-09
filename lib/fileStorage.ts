@@ -382,12 +382,9 @@ export const startFileUpload = async (
     const fileExt = file.name.split('.').pop() || 'bin';
     const uniqueFilename = `${uuidv4()}.${fileExt}`;
     
-    // Include userId in path to comply with row-level security policies
-    const safeUserId = userId || 'anonymous';
-    
     // Add diagnostic logging
     console.log('==== UPLOAD DIAGNOSTICS ====');
-    console.log('User ID:', safeUserId);
+    console.log('User ID:', userId);
     console.log('Folder:', folder);
     console.log('File details:', {
       name: file.name,
@@ -395,12 +392,26 @@ export const startFileUpload = async (
       type: file.type
     });
     
-    // Instead of nesting the userId within the folder, keep the userId as the first path segment
-    // This is critical for RLS policies which check storage.foldername(name)[1] = auth.uid()
+    // Get current user's ID from Supabase if not provided
+    if (!userId) {
+      try {
+        const { data } = await supabase.auth.getSession();
+        userId = data.session?.user?.id || 'anonymous';
+        console.log('Retrieved user ID from Supabase session:', userId);
+      } catch (error) {
+        console.error('Error getting Supabase session:', error);
+        userId = 'anonymous';
+      }
+    }
+    
+    // Ensure we have a valid userId for the path
+    const safeUserId = userId || 'anonymous';
+    
+    // Include userId as first segment in path to comply with row-level security policies
     const filePath = `${safeUserId}/${uniqueFilename}`;
     
     console.log('Generated file path:', filePath);
-    console.log('==========================')
+    console.log('==========================');
     
     // Determine the correct bucket based on the folder
     const bucketName = folder === 'podcast-audio' 
@@ -480,7 +491,16 @@ export const startFileUpload = async (
             contentType: file.type
           });
           
-        if (error) throw error;
+        if (error) {
+          console.error('Supabase upload error:', error);
+          
+          // Handle specific permission errors
+          if (error.message?.includes('new row violates row-level security policy')) {
+            throw new Error('Storage permission error. Please ensure you are properly authenticated.');
+          }
+          
+          throw error;
+        }
         
         // Get the public URL
         const { data: { publicUrl: url } } = supabase.storage
@@ -552,7 +572,7 @@ export const startFileUpload = async (
     
     // Specific user feedback based on error
     if (isRLSError) {
-      toast.error('Upload failed: Security policy violation. Please contact support.');
+      toast.error('Upload failed: Authentication error. Please try logging out and back in.');
     } else if (isNetworkError) {
       toast.error(`Upload failed: Network connection lost. Please check your internet connection.`);
     } else if (error.statusCode === 413 || error.message?.includes('too large')) {

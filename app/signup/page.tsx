@@ -1,189 +1,92 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { signIn } from 'next-auth/react';
+import React, { useEffect, useState } from 'react';
+import { Auth } from '@supabase/auth-ui-react';
+import { ThemeSupa } from '@supabase/auth-ui-shared';
+import { supabase } from '@/lib/supabaseClient';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import axios from 'axios';
-import toast from 'react-hot-toast';
-import { FaGoogle, FaGithub } from 'react-icons/fa';
+import { FaArrowLeft } from 'react-icons/fa';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import Image from 'next/image';
 
-const SignUp = () => {
+export default function Signup() {
   const router = useRouter();
-  const [isLoading, setIsLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    password: '',
-  });
+  const searchParams = useSearchParams();
+  const [error, setError] = useState<string | null>(null);
+  const redirectPath = searchParams.get('redirect') || '/dashboard';
+  const [supabase] = useState(() => createClientComponentClient());
+  const [isLoading, setIsLoading] = useState(true);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
-  };
+  // Check for auth errors in URL parameters
+  useEffect(() => {
+    const errorParam = searchParams.get('error');
+    if (errorParam) {
+      setError(
+        errorParam === 'auth-error' 
+          ? 'Authentication failed. Please try again.' 
+          : 'An error occurred. Please try again.'
+      );
+    }
+  }, [searchParams]);
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setIsLoading(true);
-
-    try {
-      // Create user account
-      await axios.post('/api/register', formData);
-      toast.success('Account created!');
-      
-      // Sign in the user
-      const signInResult = await signIn('credentials', {
-        email: formData.email,
-        password: formData.password,
-        redirect: false,
-      });
-
-      if (signInResult?.error) {
-        toast.error('Failed to sign in after registration');
-        return;
+  useEffect(() => {
+    const checkUser = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session) {
+        router.push('/dashboard');
+      } else {
+        setIsLoading(false);
       }
+    };
+    checkUser();
+  }, [router, supabase]);
 
-      router.push('/dashboard');
-    } catch (error: any) {
-      toast.error(error.response?.data?.error || 'Something went wrong');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleSocialLogin = async (provider: string) => {
-    setIsLoading(true);
-    
-    try {
-      await signIn(provider, { 
-        callbackUrl: '/dashboard',
-        redirect: true 
-      });
-    } catch (error) {
-      toast.error('Login failed');
-      setIsLoading(false);
-    }
-  };
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-gray-900 border-t-transparent"></div>
+      </div>
+    );
+  }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8 bg-white dark:bg-gray-800 p-8 rounded-xl shadow-md">
-        <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900 dark:text-white">
-            Create your account
-          </h2>
-          <p className="mt-2 text-center text-sm text-gray-600 dark:text-gray-400">
-            Already have an account?{' '}
-            <Link href="/login" className="font-medium text-primary-600 hover:text-primary-500">
-              Sign in
-            </Link>
-          </p>
+    <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 p-4">
+      <div className="w-full max-w-md space-y-8 rounded-lg bg-white p-8 shadow-md">
+        <div className="text-center">
+          <Image
+            src="/logo.png"
+            alt="Logo"
+            width={80}
+            height={80}
+            className="mx-auto"
+          />
+          <h1 className="mt-4 text-3xl font-bold">Create an Account</h1>
+          <p className="mt-2 text-gray-600">Sign up to start podcasting</p>
         </div>
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          <div className="rounded-md shadow-sm space-y-4">
-            <div>
-              <label htmlFor="name" className="label">
-                Name
-              </label>
-              <input
-                id="name"
-                name="name"
-                type="text"
-                required
-                className="input"
-                placeholder="Your name"
-                value={formData.name}
-                onChange={handleChange}
-                disabled={isLoading}
-                style={{ color: 'black' }}
-              />
-            </div>
-            <div>
-              <label htmlFor="email" className="label">
-                Email address
-              </label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                autoComplete="email"
-                required
-                className="input"
-                placeholder="Email address"
-                value={formData.email}
-                onChange={handleChange}
-                disabled={isLoading}
-                style={{ color: 'black' }}
-              />
-            </div>
-            <div>
-              <label htmlFor="password" className="label">
-                Password
-              </label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                autoComplete="new-password"
-                required
-                className="input"
-                placeholder="Password"
-                value={formData.password}
-                onChange={handleChange}
-                disabled={isLoading}
-                style={{ color: 'black' }}
-              />
-            </div>
+        
+        {error && (
+          <div className="bg-red-500/20 border border-red-500 text-red-300 px-4 py-2 rounded-md mb-6">
+            {error}
           </div>
-
-          <div>
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="btn btn-primary w-full flex justify-center py-2 px-4"
-            >
-              {isLoading ? 'Creating account...' : 'Sign up'}
-            </button>
-          </div>
-        </form>
-
-        <div className="mt-6">
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-gray-300 dark:border-gray-700"></div>
-            </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-white dark:bg-gray-800 text-gray-500 dark:text-gray-400">
-                Or continue with
-              </span>
-            </div>
-          </div>
-
-          <div className="mt-6 grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() => handleSocialLogin('google')}
-              disabled={isLoading}
-              className="btn btn-outline w-full flex items-center justify-center"
-            >
-              <FaGoogle className="mr-2" />
-              Google
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleSocialLogin('github')}
-              disabled={isLoading}
-              className="btn btn-outline w-full flex items-center justify-center"
-            >
-              <FaGithub className="mr-2" />
-              GitHub
-            </button>
-          </div>
+        )}
+        
+        <Auth
+          supabaseClient={supabase}
+          appearance={{ theme: ThemeSupa }}
+          theme="light"
+          providers={['google', 'github']}
+          redirectTo={`${window.location.origin}/auth/callback`}
+          view="sign_up"
+        />
+        
+        <div className="mt-4 text-center text-sm text-gray-600">
+          <span>Already have an account? </span>
+          <Link href="/login" className="font-medium text-indigo-600 hover:text-indigo-500">
+            Sign in
+          </Link>
         </div>
       </div>
     </div>
   );
-};
-
-export default SignUp;
+}

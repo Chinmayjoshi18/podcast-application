@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useSupabaseAuth } from '../providers/SupabaseAuthProvider';
 import toast from 'react-hot-toast';
 import { FaMicrophone, FaUpload, FaStop, FaPlay, FaPause, FaTrash, FaSave, FaGlobe, FaLock, FaArrowLeft, FaImage, FaExclamationTriangle } from 'react-icons/fa';
 import { addPodcast } from '@/lib/storage';
@@ -54,7 +54,7 @@ const UploadProgressBar = ({ progress }: { progress: number }) => {
 };
 
 const RecordPage = () => {
-  const { data: session, status } = useSession();
+  const { user, isLoading } = useSupabaseAuth();
   const router = useRouter();
   const [recordingMode, setRecordingMode] = useState<'record' | 'upload'>('record');
   const [isRecording, setIsRecording] = useState(false);
@@ -83,10 +83,10 @@ const RecordPage = () => {
   const coverImageInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    if (status === 'unauthenticated') {
+    if (!isLoading && !user) {
       router.push('/login');
     }
-  }, [status, router]);
+  }, [user, isLoading, router]);
 
   // Convert blob to base64
   const blobToBase64 = (blob: Blob): Promise<string> => {
@@ -138,7 +138,7 @@ const RecordPage = () => {
     
     try {
       // Start the background upload process
-      const fileId = `${file.name}_${file.lastModified}`;
+      const fileId = `${file.name}_${file.size}_${file.lastModified}`;
       
       // Only start the upload if it's not already uploading or uploaded
       if (!isFileUploading(fileId) && !isFileUploaded(fileId)) {
@@ -289,7 +289,7 @@ const RecordPage = () => {
       setUploadStatus('processing');
       
       // First check NextAuth session
-      if (!session?.user?.id) {
+      if (!user) {
         toast.error('You must be logged in to publish a podcast.');
         setUploadStatus('idle');
         setIsSubmitting(false);
@@ -300,11 +300,11 @@ const RecordPage = () => {
       const supabaseUserId = await getCurrentUserId();
       
       // If no Supabase user is found, we need to use the NextAuth ID but show a warning
-      const userId = supabaseUserId || session.user.id;
+      const userId = supabaseUserId || user.id;
       
       // Log diagnostic information
       console.log('==== AUTH DIAGNOSTICS ====');
-      console.log('NextAuth User ID:', session.user.id);
+      console.log('NextAuth User ID:', user.id);
       console.log('Supabase User ID:', supabaseUserId);
       console.log('Using User ID:', userId);
       
@@ -490,8 +490,8 @@ const RecordPage = () => {
           isPublic: formData.isPublic,
           user: {
             id: userId,
-            name: session?.user?.name || '',
-            image: session?.user?.image || '',
+            name: user?.name || '',
+            image: user?.image || '',
           },
         };
         
@@ -547,7 +547,7 @@ const RecordPage = () => {
     }
   };
 
-  if (status === 'loading') {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="animate-pulse text-primary-600">Loading...</div>

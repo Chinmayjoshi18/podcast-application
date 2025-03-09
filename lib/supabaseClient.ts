@@ -1,5 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
 import { StorageClient } from '@supabase/storage-js';
+import { createClientComponentClient, createServerComponentClient } from '@supabase/auth-helpers-nextjs'
+import { cookies } from 'next/headers'
+import type { Database } from '@/types/supabase'
 
 // Initialize the Supabase client
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -9,15 +12,13 @@ if (!supabaseUrl || !supabaseAnonKey) {
   console.warn('Supabase credentials are missing! Please check your environment variables.');
 }
 
-// Create the Supabase client with enhanced storage options
+// Create the Supabase client
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
+    storageKey: 'podcast-app-auth',
   },
-  global: {
-    fetch: customFetch
-  }
 });
 
 /**
@@ -156,4 +157,37 @@ export function handleStorageError(error: any): string {
   }
   
   return error.message || 'Storage operation failed';
+}
+
+// For server-side components and API routes
+export const createServerSupabaseClient = async () => {
+  const { cookies } = await import('next/headers');
+  const cookieStore = cookies();
+  
+  return createClient(
+    supabaseUrl,
+    supabaseAnonKey,
+    {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+      },
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value;
+        },
+      },
+    }
+  );
+};
+
+// Client component client (for use in client components)
+export const createClientComponent = () => {
+  return createClientComponentClient<Database>()
+}
+
+// Server component client (for use in server components and API routes)
+export const createServerClient = () => {
+  return createServerComponentClient<Database>({ cookies })
 } 
