@@ -20,6 +20,56 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   }
 });
 
+/**
+ * Get the current authenticated Supabase user ID
+ * This is important for storage policies as they check against auth.uid()
+ */
+export const getCurrentUserId = async (): Promise<string | null> => {
+  try {
+    // Get the current session
+    const { data: { session }, error } = await supabase.auth.getSession();
+    
+    if (error) {
+      console.error('Error getting Supabase session:', error);
+      return null;
+    }
+    
+    if (!session?.user?.id) {
+      console.warn('No authenticated Supabase user found');
+      return null;
+    }
+    
+    return session.user.id;
+  } catch (error) {
+    console.error('Error fetching Supabase user:', error);
+    return null;
+  }
+};
+
+/**
+ * Auto-sign in with access token if available (from NextAuth)
+ * This synchronizes NextAuth session with Supabase session
+ */
+export const syncSupabaseAuth = async (accessToken: string) => {
+  if (!accessToken) return;
+  
+  try {
+    // Sign in with the NextAuth JWT token
+    const { error } = await supabase.auth.setSession({
+      access_token: accessToken,
+      refresh_token: '',
+    });
+    
+    if (error) {
+      console.error('Error syncing Supabase session:', error);
+    } else {
+      console.log('Supabase auth synchronized with NextAuth');
+    }
+  } catch (error) {
+    console.error('Error during Supabase auth sync:', error);
+  }
+};
+
 // Function to get a server-side client with service role (for admin operations)
 export const getServiceSupabase = () => {
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;

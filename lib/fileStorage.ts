@@ -384,11 +384,23 @@ export const startFileUpload = async (
     
     // Include userId in path to comply with row-level security policies
     const safeUserId = userId || 'anonymous';
-    const filePath = folder 
-      ? `${safeUserId}/${uniqueFilename}` 
-      : `${safeUserId}/${uniqueFilename}`;
     
-    console.log(`Starting upload for ${file.name} to ${filePath}`);
+    // Add diagnostic logging
+    console.log('==== UPLOAD DIAGNOSTICS ====');
+    console.log('User ID:', safeUserId);
+    console.log('Folder:', folder);
+    console.log('File details:', {
+      name: file.name,
+      size: file.size,
+      type: file.type
+    });
+    
+    // Instead of nesting the userId within the folder, keep the userId as the first path segment
+    // This is critical for RLS policies which check storage.foldername(name)[1] = auth.uid()
+    const filePath = `${safeUserId}/${uniqueFilename}`;
+    
+    console.log('Generated file path:', filePath);
+    console.log('==========================')
     
     // Determine the correct bucket based on the folder
     const bucketName = folder === 'podcast-audio' 

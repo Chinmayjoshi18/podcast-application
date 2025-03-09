@@ -15,6 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
+import { getCurrentUserId, supabase } from '@/lib/supabaseClient';
 
 // Import AudioRecorder dynamically with SSR disabled
 const ClientAudioRecorder = dynamic(
@@ -287,7 +288,7 @@ const RecordPage = () => {
       setIsSubmitting(true);
       setUploadStatus('processing');
       
-      // Ensure user is authenticated
+      // First check NextAuth session
       if (!session?.user?.id) {
         toast.error('You must be logged in to publish a podcast.');
         setUploadStatus('idle');
@@ -295,8 +296,33 @@ const RecordPage = () => {
         return;
       }
       
-      // Get user ID for storage policy compliance
-      const userId = session.user.id;
+      // Get the Supabase user ID (critical for storage policies)
+      const supabaseUserId = await getCurrentUserId();
+      
+      // If no Supabase user is found, we need to use the NextAuth ID but show a warning
+      const userId = supabaseUserId || session.user.id;
+      
+      // Log diagnostic information
+      console.log('==== AUTH DIAGNOSTICS ====');
+      console.log('NextAuth User ID:', session.user.id);
+      console.log('Supabase User ID:', supabaseUserId);
+      console.log('Using User ID:', userId);
+      
+      // Check current Supabase auth status
+      const { data: authData } = await supabase.auth.getSession();
+      console.log('Supabase session:', authData.session ? 'Active' : 'None');
+      if (authData.session) {
+        console.log('Supabase session user:', authData.session.user.id);
+      }
+      console.log('========================');
+      
+      // If we don't have a Supabase session, show a clear error
+      if (!authData.session) {
+        toast.error('Not authenticated with Supabase. Please try logging out and back in.');
+        setUploadStatus('error');
+        setIsSubmitting(false);
+        return;
+      }
       
       // Validate form data
       if (!formData.title.trim()) {
