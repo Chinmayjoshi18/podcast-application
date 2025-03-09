@@ -1,7 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { StorageClient } from '@supabase/storage-js';
-import { createClientComponentClient, createServerComponentClient } from '@supabase/auth-helpers-nextjs'
-import { cookies } from 'next/headers'
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import type { Database } from '@/types/supabase'
 
 // Initialize the Supabase client
@@ -81,9 +80,4 @@ export function handleStorageError(error: any): string {
 // Client component client (for use in client components)
 export const createClientComponent = () => {
   return createClientComponentClient<Database>()
-}
-
-// Server component client (for use in server components and API routes)
-export const createServerClient = () => {
-  return createServerComponentClient<Database>({ cookies })
 } 
