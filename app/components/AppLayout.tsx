@@ -15,6 +15,8 @@ const dashboardRoutes = [
   '/settings',
   '/record',
   '/podcasts',
+  '/topics',
+  '/saved',
 ];
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -28,13 +30,25 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const showSidebars = !isLoading && user && isDashboardRoute;
 
   return (
-    <div className="min-h-screen">
-      <div className="flex">
-        {showSidebars && <Sidebar />}
-        <main className={`flex-1 ${showSidebars ? 'max-w-[600px] mx-auto' : 'w-full'}`}>
-          {children}
+    <div className="min-h-screen bg-black text-white">
+      <div className="max-w-7xl mx-auto flex">
+        {showSidebars && (
+          <div className="w-64 lg:w-72 sticky top-0 h-screen overflow-y-auto border-r border-gray-800">
+            <Sidebar />
+          </div>
+        )}
+        
+        <main className={`min-h-screen ${showSidebars ? 'flex-1 max-w-[600px] border-r border-gray-800' : 'w-full'}`}>
+          <div className={`${showSidebars ? 'max-w-[600px]' : ''} w-full`}>
+            {children}
+          </div>
         </main>
-        {showSidebars && <RightSidebar />}
+        
+        {showSidebars && (
+          <div className="hidden lg:block w-80 sticky top-0 h-screen overflow-y-auto">
+            <RightSidebar />
+          </div>
+        )}
       </div>
     </div>
   );
