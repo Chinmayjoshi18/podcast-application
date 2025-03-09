@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { cloudinary } from '@/lib/cloudinaryConfig'; // Import from centralized config
+// Import from our updated cloudinary configuration module
+import { cloudinary } from '@/lib/cloudinaryConfig';
+
+// Handle potential missing Cloudinary configuration
+if (!cloudinary || !cloudinary.config().cloud_name) {
+  console.error('⚠️ Cloudinary not properly configured. Upload functionality will be limited.');
+}
 
 // Define types for Cloudinary responses
 interface CloudinaryResource {

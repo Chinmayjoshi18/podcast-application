@@ -1,3 +1,6 @@
+// Load environment variable sanitizer early
+require('./lib/env-sanitizer');
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -31,6 +34,10 @@ const nextConfig = {
       {
         protocol: 'https',
         hostname: 'placehold.co',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.cloudinary.com',
       }
     ],
   },

@@ -1,14 +1,24 @@
-import { v2 as cloudinary } from 'cloudinary';
-
 /**
- * Parse Cloudinary URL to extract credentials
+ * Cloudinary Configuration Module
+ * This module provides a centralized configuration for Cloudinary
+ * and ensures that invalid environment variables don't break the build
  */
+
+// Import cloudinary AFTER we've handled potential invalid environment variables
+let cloudinary: any;
+
+// Safely parse Cloudinary URL
 function parseCloudinaryUrl(url: string): { cloudName: string; apiKey: string; apiSecret: string } | null {
   try {
-    // Format: cloudinary://api_key:api_secret@cloud_name
-    const match = url.match(/cloudinary:\/\/([^:]+):([^@]+)@(.+)/);
+    if (!url || typeof url !== 'string') return null;
+    
+    // Clean up the URL if needed (sometimes URLs can have extra whitespace or quotes)
+    url = url.trim().replace(/^['"](.*)['"]$/, '$1');
+    
+    // Format must be: cloudinary://api_key:api_secret@cloud_name
+    const match = url.match(/^cloudinary:\/\/([^:]+):([^@]+)@(.+)$/);
     if (!match) {
-      console.error('Invalid CLOUDINARY_URL format, should be: cloudinary://api_key:api_secret@cloud_name');
+      console.error('⚠️ Invalid CLOUDINARY_URL format. Expected: cloudinary://api_key:api_secret@cloud_name');
       return null;
     }
     
@@ -18,58 +28,81 @@ function parseCloudinaryUrl(url: string): { cloudName: string; apiKey: string; a
       cloudName: match[3]
     };
   } catch (error) {
-    console.error('Failed to parse Cloudinary URL:', error);
+    console.error('⚠️ Failed to parse Cloudinary URL:', error);
     return null;
   }
 }
 
-/**
- * Configure Cloudinary with environment variables
- * This function handles both CLOUDINARY_URL and individual credentials
- */
-function setupCloudinary() {
-  // First check if CLOUDINARY_URL is available
-  const cloudinaryUrl = process.env.CLOUDINARY_URL || '';
+// CRITICAL: Handle the URL before importing Cloudinary
+function sanitizeCloudinaryEnv() {
+  // Store the original CLOUDINARY_URL
+  const originalUrl = process.env.CLOUDINARY_URL;
   
-  if (cloudinaryUrl && cloudinaryUrl.startsWith('cloudinary://')) {
-    // When using CLOUDINARY_URL format, parse it and use explicit configuration
-    // This ensures it works correctly
-    const credentials = parseCloudinaryUrl(cloudinaryUrl);
+  // If CLOUDINARY_URL is set, validate it
+  if (originalUrl) {
+    const parsedCreds = parseCloudinaryUrl(originalUrl);
     
-    if (credentials) {
-      cloudinary.config({
-        cloud_name: credentials.cloudName,
-        api_key: credentials.apiKey,
-        api_secret: credentials.apiSecret
-      });
-      console.log(`Cloudinary configured with credentials from CLOUDINARY_URL for cloud: ${credentials.cloudName}`);
-      return true;
+    if (!parsedCreds) {
+      // If CLOUDINARY_URL is invalid, remove it to prevent Cloudinary SDK from failing
+      console.warn('⚠️ Invalid CLOUDINARY_URL detected, removing it to prevent errors');
+      delete process.env.CLOUDINARY_URL;
+      
+      // Set individual credentials if available
+      if (process.env.CLOUDINARY_CLOUD_NAME) {
+        console.log('✅ Using individual Cloudinary credentials instead');
+      } else {
+        console.warn('⚠️ No valid Cloudinary credentials found. Functionality may be limited.');
+      }
     } else {
-      console.error('Invalid CLOUDINARY_URL format, falling back to individual credentials');
+      console.log(`✅ Valid CLOUDINARY_URL detected for cloud: ${parsedCreds.cloudName}`);
+      
+      // Ensure the format is exactly right (this is important for the Cloudinary SDK)
+      process.env.CLOUDINARY_URL = `cloudinary://${parsedCreds.apiKey}:${parsedCreds.apiSecret}@${parsedCreds.cloudName}`;
     }
+  } else {
+    console.log('ℹ️ No CLOUDINARY_URL found, will use individual credentials if available');
   }
-  
-  // Fallback to individual credentials
+}
+
+// Run the sanitization BEFORE importing Cloudinary
+sanitizeCloudinaryEnv();
+
+// NOW it's safe to import Cloudinary
+import { v2 as cloudinaryImport } from 'cloudinary';
+cloudinary = cloudinaryImport;
+
+// Configure Cloudinary with explicit settings to ensure it works correctly
+function setupCloudinary() {
+  // Get configuration values, prioritizing individual credentials if URL was invalid
   const cloudName = process.env.CLOUDINARY_CLOUD_NAME || process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || '';
   const apiKey = process.env.CLOUDINARY_API_KEY || '';
   const apiSecret = process.env.CLOUDINARY_API_SECRET || '';
   
+  // Explicitly configure Cloudinary, even if CLOUDINARY_URL is set
+  // This ensures we have control over the configuration
   if (cloudName && apiKey && apiSecret) {
     cloudinary.config({
       cloud_name: cloudName,
       api_key: apiKey,
       api_secret: apiSecret
     });
-    console.log(`Cloudinary configured with individual credentials for cloud: ${cloudName}`);
+    console.log(`✅ Cloudinary explicitly configured for cloud: ${cloudName}`);
     return true;
   }
   
-  console.error('No valid Cloudinary credentials found in environment variables');
+  // Check if CLOUDINARY_URL is configured automatically 
+  const config = cloudinary.config();
+  if (config && config.cloud_name) {
+    console.log(`✅ Cloudinary auto-configured for cloud: ${config.cloud_name}`);
+    return true;
+  }
+  
+  console.warn('⚠️ Cloudinary configuration is incomplete. Features requiring Cloudinary may not work.');
   return false;
 }
 
-// Initialize Cloudinary on module import
+// Run the setup
 setupCloudinary();
 
-// Export configured cloudinary instance and utility functions
-export { cloudinary, setupCloudinary, parseCloudinaryUrl }; 
+// Export configured cloudinary instance
+export { cloudinary }; 

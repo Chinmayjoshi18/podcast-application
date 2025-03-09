@@ -2,7 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth';
-import { cloudinary } from '@/lib/cloudinaryConfig'; // Import from centralized config
+// Import from our updated cloudinary configuration module
+import { cloudinary } from '@/lib/cloudinaryConfig';
+
+// Handle potential missing Cloudinary configuration
+if (!cloudinary || !cloudinary.config().cloud_name) {
+  console.error('⚠️ Cloudinary not properly configured. Upload signature generation will fail.');
+}
 
 // Define the params interface to fix type errors
 interface SignatureParams {
