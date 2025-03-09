@@ -8,13 +8,22 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-        'dm': ['var(--font-dm-sans)', 'sans-serif'],
+        dm: ['var(--font-dm-sans)', 'sans-serif'],
       },
       colors: {
-        primary: "#1d9bf0", // Twitter blue
+        primary: '#1d9bf0',
+        black: '#000000',
+        white: '#ffffff',
         gray: {
-          800: "#1f2937",
-          900: "#111827",
+          100: '#f3f4f6',
+          200: '#e5e7eb',
+          300: '#d1d5db',
+          400: '#9ca3af',
+          500: '#6b7280',
+          600: '#4b5563',
+          700: '#374151',
+          800: '#1f2937',
+          900: '#111827',
         },
       },
     },
