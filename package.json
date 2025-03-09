@@ -5,12 +5,13 @@
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
-    "postbuild": "echo 'Build completed successfully!'",
     "start": "next start",
     "lint": "next lint",
     "prisma:setup": "node prisma/vercel-build.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate deploy",
     "prisma:seed": "node prisma/seed.js",
-    "postinstall": "prisma generate",
+    "postinstall": "test -n \"$DATABASE_URL\" || cp prisma/.env .env 2>/dev/null || true && prisma generate",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage"
