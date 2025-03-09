@@ -9,7 +9,7 @@ interface Podcast {
   id: string
   title: string
   description: string
-  coverImage: string
+  coverImage?: string
   audioUrl: string
   duration?: number
   createdAt: string

@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -311,7 +310,7 @@ const EditProfileModal = ({ isOpen, onClose, onSave, initialData }: EditProfileM
 
 const Dashboard = () => {
   const router = useRouter();
-  const { data: session, status, update } = useSession();
+  const { user, session, isLoading: authLoading, refreshSession } = useSupabase();
   const [podcasts, setPodcasts] = useState<Podcast[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isEditProfileModalOpen, setIsEditProfileModalOpen] = useState(false);
@@ -325,29 +324,27 @@ const Dashboard = () => {
   });
   
   const [profile, setProfile] = useState({
-    name: '',
-    username: '',
+    name: user?.user_metadata?.full_name || '',
+    username: user?.user_metadata?.username || '',
     bio: 'Podcast creator and audio enthusiast.',
-    website: '',
-    profileImage: '',
+    website: 'https://example.com',
+    profileImage: user?.user_metadata?.avatar_url || '',
     coverImage: 'https://placehold.co/1500x500/3f33e1/ffffff?text=Cover Photo'
   });
 
-  const { user } = useSupabase();
-
   useEffect(() => {
-    if (status === 'unauthenticated') {
+    if (authLoading) {
       router.push('/login');
-    } else if (status === 'authenticated' && session.user) {
-      const userId = session.user.id;
+    } else if (user) {
+      const userId = user.id;
       
       // Initialize profile data only once when session is available
-      if (!profile.name && session.user.name) {
+      if (!profile.name && user?.user_metadata?.full_name) {
         setProfile({
           ...profile,
-          name: session.user.name || 'User',
-          username: (session.user.email || 'user@example.com').split('@')[0],
-          profileImage: session.user.image || 'https://placehold.co/400x400/5f33e1/ffffff?text=U'
+          name: user.user_metadata.full_name || 'User',
+          username: (user.email || 'user@example.com').split('@')[0],
+          profileImage: user.user_metadata.avatar_url || 'https://placehold.co/400x400/5f33e1/ffffff?text=U'
         });
       }
       
@@ -403,12 +400,27 @@ const Dashboard = () => {
       
       loadPodcasts();
     }
-  }, [status, session, router, dataFetched, profile.name]);
+  }, [authLoading, user, router, dataFetched, profile.name]);
 
   // Handle profile save
   const handleSaveProfile = async (data: EditProfileFormData) => {
     try {
-      // In a real app, you would upload the images and update the user profile in the database
+      // Update user profile in Supabase
+      const { error } = await supabase.auth.updateUser({
+        data: {
+          full_name: data.name,
+          avatar_url: data.profileImage as string,
+          username: data.username,
+        }
+      });
+
+      if (error) {
+        toast.error('Failed to update profile');
+        return;
+      }
+
+      // Refresh session
+      await refreshSession();
       
       // Process new image files if they've changed
       const newProfileImage = typeof data.profileImage === 'string' 
@@ -429,17 +441,7 @@ const Dashboard = () => {
         coverImage: newCoverImage
       };
       
-      // Update session first
-      await update({
-        ...session,
-        user: {
-          ...session?.user,
-          name: data.name,
-          image: newProfileImage
-        }
-      });
-      
-      // Then update local state once session update is complete
+      // Update local state once session update is complete
       setProfile(updatedProfile);
       
       toast.success('Profile updated successfully');
@@ -499,7 +501,7 @@ const Dashboard = () => {
     }
   };
 
-  if (status === 'loading' || isLoading) {
+  if (authLoading || isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="animate-pulse text-primary-600">Loading...</div>
@@ -524,8 +526,8 @@ const Dashboard = () => {
     }).format(date);
   };
 
-  const username = session?.user?.name || 'User';
-  const userEmail = session?.user?.email || '';
+  const username = user?.user_metadata?.full_name || 'User';
+  const userEmail = user?.user_metadata?.email || '';
 
   return (
     <div className="min-h-screen">
