@@ -392,7 +392,7 @@ const Dashboard = () => {
           }
           setPodcasts([]);
         } finally {
-          setIsLoading(false);
+        setIsLoading(false);
         }
       };
       
@@ -535,13 +535,13 @@ const Dashboard = () => {
             <div className="flex-1">
               <h1 className="text-xl font-bold">{profile.name}</h1>
               <p className="text-gray-400 text-sm">{podcasts.length} Podcasts</p>
-            </div>
+        </div>
             <Link href="/record" className="ml-auto">
               <button className="bg-primary-500 hover:bg-primary-600 text-white px-3 py-1 rounded-full text-sm">
                 New
               </button>
-            </Link>
-          </div>
+          </Link>
+        </div>
 
           {/* Cover photo */}
           <div className="relative w-full h-60 bg-gray-800 mt-2">
@@ -584,8 +584,8 @@ const Dashboard = () => {
                 >
                   Edit profile
                 </button>
-              </div>
-              
+      </div>
+
               <div className="mt-3 max-w-md">
                 <p className="text-gray-300">
                   {profile.bio}
@@ -621,79 +621,79 @@ const Dashboard = () => {
                 label="Listens"
                 count={stats.totalListens}
                 icon={<FaPlay className="text-white" />}
-              />
-            </div>
+        />
+      </div>
 
             {/* Rest of the dashboard content */}
             <div className="border-t border-gray-700 mt-4">
-              {/* Tabs */}
-              <div className="mb-6 border-b border-gray-200 dark:border-gray-700">
-                <nav className="flex space-x-8">
-                  <button
-                    onClick={() => setActiveTab('overview')}
-                    className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                      activeTab === 'overview'
-                        ? 'border-primary-500 text-primary-600'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                    }`}
-                  >
-                    Overview
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('podcasts')}
-                    className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                      activeTab === 'podcasts'
-                        ? 'border-primary-500 text-primary-600'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                    }`}
-                  >
-                    My Podcasts
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('analytics')}
-                    className={`py-4 px-1 border-b-2 font-medium text-sm ${
-                      activeTab === 'analytics'
-                        ? 'border-primary-500 text-primary-600'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                    }`}
-                  >
-                    Analytics
-                  </button>
-                </nav>
-              </div>
+      {/* Tabs */}
+      <div className="mb-6 border-b border-gray-200 dark:border-gray-700">
+        <nav className="flex space-x-8">
+          <button
+            onClick={() => setActiveTab('overview')}
+            className={`py-4 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'overview'
+                ? 'border-primary-500 text-primary-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            Overview
+          </button>
+          <button
+            onClick={() => setActiveTab('podcasts')}
+            className={`py-4 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'podcasts'
+                ? 'border-primary-500 text-primary-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            My Podcasts
+          </button>
+          <button
+            onClick={() => setActiveTab('analytics')}
+            className={`py-4 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'analytics'
+                ? 'border-primary-500 text-primary-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            Analytics
+          </button>
+        </nav>
+      </div>
 
-              {/* Tab Content */}
-              <div className="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
-                {activeTab === 'overview' && (
-                  <div>
-                    <h2 className="text-xl font-semibold mb-4">Recent Activity</h2>
-                    {podcasts.length > 0 ? (
-                      <div className="space-y-4">
+      {/* Tab Content */}
+      <div className="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
+        {activeTab === 'overview' && (
+          <div>
+            <h2 className="text-xl font-semibold mb-4">Recent Activity</h2>
+            {podcasts.length > 0 ? (
+              <div className="space-y-4">
                         {podcasts.slice(0, 3).map((podcast) => (
-                          <div
-                            key={podcast.id}
-                            className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 flex flex-col md:flex-row"
-                          >
-                            <div className="flex-shrink-0 w-full md:w-48 h-32 mb-4 md:mb-0 md:mr-4">
-                              <div className="relative w-full h-full rounded-md overflow-hidden">
-                                <Image
+                  <div
+                    key={podcast.id}
+                    className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 flex flex-col md:flex-row"
+                  >
+                    <div className="flex-shrink-0 w-full md:w-48 h-32 mb-4 md:mb-0 md:mr-4">
+                      <div className="relative w-full h-full rounded-md overflow-hidden">
+                        <Image
                                   src={podcast.coverImage || "https://placehold.co/300"}
-                                  alt={podcast.title}
+                          alt={podcast.title}
                                   fill
                                   className="object-cover"
-                                />
-                              </div>
-                            </div>
-                            <div className="flex-grow">
-                              <h3 className="text-lg font-semibold mb-2">{podcast.title}</h3>
-                              <p className="text-gray-600 dark:text-gray-400 mb-2">{podcast.description}</p>
-                              <div className="flex flex-wrap gap-4 text-sm text-gray-500 dark:text-gray-400">
+                        />
+                      </div>
+                    </div>
+                    <div className="flex-grow">
+                      <h3 className="text-lg font-semibold mb-2">{podcast.title}</h3>
+                      <p className="text-gray-600 dark:text-gray-400 mb-2">{podcast.description}</p>
+                      <div className="flex flex-wrap gap-4 text-sm text-gray-500 dark:text-gray-400">
                                 {podcast.duration && typeof podcast.duration === 'number' && (
-                                  <span>Duration: {formatDuration(podcast.duration)}</span>
+                        <span>Duration: {formatDuration(podcast.duration)}</span>
                                 )}
-                                <span>Listens: {podcast.listens}</span>
-                                <span>Likes: {podcast.likes}</span>
-                                <span>Published: {formatDate(podcast.createdAt)}</span>
+                        <span>Listens: {podcast.listens}</span>
+                        <span>Likes: {podcast.likes}</span>
+                        <span>Published: {formatDate(podcast.createdAt)}</span>
                                 <span className={`flex items-center ${podcast.isPublic ? 'text-green-500' : 'text-amber-500'}`}>
                                   {podcast.isPublic ? (
                                     <>
@@ -705,14 +705,14 @@ const Dashboard = () => {
                                     </>
                                   )}
                                 </span>
-                              </div>
+                      </div>
                               <div className="mt-4 flex flex-wrap gap-3">
-                                <Link
-                                  href={`/podcasts/${podcast.id}`}
-                                  className="text-primary-600 hover:text-primary-800 dark:hover:text-primary-400 font-medium"
-                                >
-                                  View
-                                </Link>
+                        <Link
+                          href={`/podcasts/${podcast.id}`}
+                          className="text-primary-600 hover:text-primary-800 dark:hover:text-primary-400 font-medium"
+                        >
+                          View
+                        </Link>
                                 <button 
                                   onClick={() => togglePrivacy(podcast.id)}
                                   className="text-primary-600 hover:text-primary-800 dark:hover:text-primary-400 font-medium"
@@ -735,59 +735,59 @@ const Dashboard = () => {
                                   <FaLink className="mr-1" />
                                   Share
                                 </button>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
                       </div>
-                    ) : (
-                      <div className="text-center py-10">
-                        <FaMicrophone className="mx-auto h-12 w-12 text-gray-400" />
-                        <h3 className="mt-2 text-lg font-medium text-gray-900 dark:text-gray-100">No podcasts yet</h3>
-                        <p className="mt-1 text-gray-500 dark:text-gray-400">Get started by creating your first podcast.</p>
-                        <div className="mt-6">
-                          <Link href="/record" className="btn btn-primary">
-                            Create Podcast
-                          </Link>
-                        </div>
-                      </div>
-                    )}
+                    </div>
                   </div>
-                )}
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-10">
+                <FaMicrophone className="mx-auto h-12 w-12 text-gray-400" />
+                <h3 className="mt-2 text-lg font-medium text-gray-900 dark:text-gray-100">No podcasts yet</h3>
+                <p className="mt-1 text-gray-500 dark:text-gray-400">Get started by creating your first podcast.</p>
+                <div className="mt-6">
+                  <Link href="/record" className="btn btn-primary">
+                    Create Podcast
+                  </Link>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
-                {activeTab === 'podcasts' && (
-                  <div>
+        {activeTab === 'podcasts' && (
+          <div>
                     <div className="flex justify-between items-center mb-6">
                       <h2 className="text-xl font-semibold">My Podcasts</h2>
                     </div>
                     
-                    {podcasts.length > 0 ? (
-                      <div className="space-y-4">
-                        {podcasts.map((podcast) => (
-                          <div
-                            key={podcast.id}
-                            className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 flex flex-col md:flex-row"
-                          >
-                            <div className="flex-shrink-0 w-full md:w-48 h-32 mb-4 md:mb-0 md:mr-4">
-                              <div className="relative w-full h-full rounded-md overflow-hidden">
-                                <Image
+            {podcasts.length > 0 ? (
+              <div className="space-y-4">
+                {podcasts.map((podcast) => (
+                  <div
+                    key={podcast.id}
+                    className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 flex flex-col md:flex-row"
+                  >
+                    <div className="flex-shrink-0 w-full md:w-48 h-32 mb-4 md:mb-0 md:mr-4">
+                      <div className="relative w-full h-full rounded-md overflow-hidden">
+                        <Image
                                   src={podcast.coverImage || "https://placehold.co/300"}
-                                  alt={podcast.title}
+                          alt={podcast.title}
                                   fill
                                   className="object-cover"
-                                />
-                              </div>
-                            </div>
-                            <div className="flex-grow">
-                              <h3 className="text-lg font-semibold mb-2">{podcast.title}</h3>
-                              <p className="text-gray-600 dark:text-gray-400 mb-2">{podcast.description}</p>
-                              <div className="flex flex-wrap gap-4 text-sm text-gray-500 dark:text-gray-400">
+                        />
+                      </div>
+                    </div>
+                    <div className="flex-grow">
+                      <h3 className="text-lg font-semibold mb-2">{podcast.title}</h3>
+                      <p className="text-gray-600 dark:text-gray-400 mb-2">{podcast.description}</p>
+                      <div className="flex flex-wrap gap-4 text-sm text-gray-500 dark:text-gray-400">
                                 {podcast.duration && typeof podcast.duration === 'number' && (
-                                  <span>Duration: {formatDuration(podcast.duration)}</span>
+                        <span>Duration: {formatDuration(podcast.duration)}</span>
                                 )}
-                                <span>Listens: {podcast.listens}</span>
-                                <span>Likes: {podcast.likes}</span>
-                                <span>Published: {formatDate(podcast.createdAt)}</span>
+                        <span>Listens: {podcast.listens}</span>
+                        <span>Likes: {podcast.likes}</span>
+                        <span>Published: {formatDate(podcast.createdAt)}</span>
                                 <span className={`flex items-center ${podcast.isPublic ? 'text-green-500' : 'text-amber-500'}`}>
                                   {podcast.isPublic ? (
                                     <>
@@ -799,14 +799,14 @@ const Dashboard = () => {
                                     </>
                                   )}
                                 </span>
-                              </div>
+                      </div>
                               <div className="mt-4 flex flex-wrap gap-3">
-                                <Link
-                                  href={`/podcasts/${podcast.id}`}
-                                  className="text-primary-600 hover:text-primary-800 dark:hover:text-primary-400 font-medium"
-                                >
-                                  View
-                                </Link>
+                        <Link
+                          href={`/podcasts/${podcast.id}`}
+                          className="text-primary-600 hover:text-primary-800 dark:hover:text-primary-400 font-medium"
+                        >
+                          View
+                        </Link>
                                 <button 
                                   onClick={() => togglePrivacy(podcast.id)}
                                   className="text-primary-600 hover:text-primary-800 dark:hover:text-primary-400 font-medium"
@@ -829,43 +829,43 @@ const Dashboard = () => {
                                   <FaLink className="mr-1" />
                                   Share
                                 </button>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
                       </div>
-                    ) : (
-                      <div className="text-center py-10">
-                        <FaMicrophone className="mx-auto h-12 w-12 text-gray-400" />
-                        <h3 className="mt-2 text-lg font-medium text-gray-900 dark:text-gray-100">No podcasts yet</h3>
-                        <p className="mt-1 text-gray-500 dark:text-gray-400">Get started by creating your first podcast.</p>
-                        <div className="mt-6">
-                          <Link href="/record" className="btn btn-primary">
-                            Create Podcast
-                          </Link>
-                        </div>
-                      </div>
-                    )}
+                    </div>
                   </div>
-                )}
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-10">
+                <FaMicrophone className="mx-auto h-12 w-12 text-gray-400" />
+                <h3 className="mt-2 text-lg font-medium text-gray-900 dark:text-gray-100">No podcasts yet</h3>
+                <p className="mt-1 text-gray-500 dark:text-gray-400">Get started by creating your first podcast.</p>
+                <div className="mt-6">
+                  <Link href="/record" className="btn btn-primary">
+                    Create Podcast
+                  </Link>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
-                {activeTab === 'analytics' && (
-                  <div>
-                    <h2 className="text-xl font-semibold mb-4">Analytics</h2>
+        {activeTab === 'analytics' && (
+          <div>
+            <h2 className="text-xl font-semibold mb-4">Analytics</h2>
                     <p className="text-gray-600 dark:text-gray-400">
                       Detailed analytics about your podcasts will appear here.
                     </p>
                     {/* Analytics content would go here in a real app */}
                     <div className="bg-gray-50 dark:bg-gray-700 p-8 rounded-lg text-center mt-6">
-                      <p className="text-gray-500 dark:text-gray-400">
+            <p className="text-gray-500 dark:text-gray-400">
                         Coming soon: Detailed metrics and insights about your podcast performance.
                       </p>
-                    </div>
-                  </div>
-                )}
-              </div>
             </div>
           </div>
+        )}
+      </div>
+    </div>
+        </div>
         </div>
       </div>
 

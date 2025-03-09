@@ -1,23 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { v2 as cloudinary } from 'cloudinary';
-
-// Configure Cloudinary with environment variables
-// First check if CLOUDINARY_URL is available
-if (process.env.CLOUDINARY_URL) {
-  // When using CLOUDINARY_URL, we don't need to call cloudinary.config()
-  // The SDK automatically picks it up from the environment
-  console.log('Using CLOUDINARY_URL from environment variables');
-} else {
-  // Fallback to individual credentials if CLOUDINARY_URL is not set
-  cloudinary.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME || process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || "dbrso3dnr",
-    api_key: process.env.CLOUDINARY_API_KEY || "",
-    api_secret: process.env.CLOUDINARY_API_SECRET || ""
-  });
-  console.log('Using individual Cloudinary credentials from environment variables');
-}
+import { cloudinary } from '@/lib/cloudinaryConfig'; // Import from centralized config
 
 // This configuration explicitly disables Next.js's default body parser
 // to handle large file uploads ourselves

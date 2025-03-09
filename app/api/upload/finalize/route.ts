@@ -1,30 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { v2 as cloudinary } from 'cloudinary';
-
-// Configure Cloudinary with environment variables
-// First check if CLOUDINARY_URL is available
-if (process.env.CLOUDINARY_URL) {
-  // When using CLOUDINARY_URL, we don't need to call cloudinary.config()
-  // The SDK automatically picks it up from the environment
-  console.log('Using CLOUDINARY_URL from environment variables');
-} else {
-  // Fallback to individual credentials if CLOUDINARY_URL is not set
-  cloudinary.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME || process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || "dbrso3dnr",
-    api_key: process.env.CLOUDINARY_API_KEY || "",
-    api_secret: process.env.CLOUDINARY_API_SECRET || ""
-  });
-  console.log('Using individual Cloudinary credentials from environment variables');
-}
-
-// This configuration disables the default body parser for this route
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
+import { cloudinary } from '@/lib/cloudinaryConfig'; // Import from centralized config
 
 // Define types for Cloudinary responses
 interface CloudinaryResource {
@@ -38,6 +15,13 @@ interface CloudinarySearchResult {
   total_count: number;
   [key: string]: any;
 }
+
+// This configuration disables the default body parser for this route
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
 
 // POST /api/upload/finalize - Finalize a chunked upload
 export async function POST(request: NextRequest) {
@@ -60,18 +44,19 @@ export async function POST(request: NextRequest) {
 
     // First, use the Cloudinary API to search for all chunks with this tag
     const searchResult = await new Promise<CloudinarySearchResult>((resolve, reject) => {
-      cloudinary.search
+      // Use a different approach to avoid TypeScript errors with the execute method
+      const search = cloudinary.search
         .expression(`tags=${tag}`)
         .sort_by('public_id', 'asc')
-        .max_results(totalChunks)
-        .execute((error, result) => {
-          if (error) {
-            console.error('Error searching for chunks:', error);
-            reject(error);
-          } else {
-            resolve(result as CloudinarySearchResult);
-          }
-        });
+        .max_results(totalChunks);
+
+      // Use the callback-based API in a way that TypeScript understands
+      search.execute().then((result: any) => {
+        resolve(result as CloudinarySearchResult);
+      }).catch((error: any) => {
+        console.error('Error searching for chunks:', error);
+        reject(error);
+      });
     });
 
     // Verify all chunks are present

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth';
+import { cloudinary } from '@/lib/cloudinaryConfig'; // Import from centralized config
 
 // Define the params interface to fix type errors
 interface SignatureParams {
@@ -11,66 +12,6 @@ interface SignatureParams {
   resource_type?: string;
   audio_codec?: string;
   [key: string]: string | undefined;
-}
-
-// Parse Cloudinary URL to extract credentials
-function parseCloudinaryUrl(url: string): { cloudName: string; apiKey: string; apiSecret: string } | null {
-  try {
-    // Format: cloudinary://api_key:api_secret@cloud_name
-    const match = url.match(/cloudinary:\/\/([^:]+):([^@]+)@(.+)/);
-    if (!match) return null;
-    
-    return {
-      apiKey: match[1],
-      apiSecret: match[2],
-      cloudName: match[3]
-    };
-  } catch (error) {
-    console.error('Failed to parse Cloudinary URL:', error);
-    return null;
-  }
-}
-
-/**
- * Get Cloudinary credentials from environment variables
- * Supports multiple naming conventions for better compatibility
- */
-function getCloudinaryCredentials() {
-  // Try different variable names for cloud name
-  const cloudName = 
-    process.env.CLOUDINARY_CLOUD_NAME || 
-    process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME || 
-    "dbrso3dnr"; // Default as fallback
-  
-  // Try different variable names for API key
-  let apiKey = 
-    process.env.CLOUDINARY_API_KEY || 
-    "";
-  
-  // Try different variable names for API secret
-  let apiSecret = 
-    process.env.CLOUDINARY_API_SECRET || 
-    "";
-  
-  // Try to parse from CLOUDINARY_URL if individual credentials are missing
-  const cloudinaryUrl = process.env.CLOUDINARY_URL;
-  if (cloudinaryUrl && (!apiSecret || !apiKey)) {
-    const parsedCreds = parseCloudinaryUrl(cloudinaryUrl);
-    if (parsedCreds) {
-      apiKey = parsedCreds.apiKey;
-      apiSecret = parsedCreds.apiSecret;
-      // Only override cloud name if it wasn't set explicitly
-      if (cloudName === "dbrso3dnr" && parsedCreds.cloudName) {
-        return {
-          apiKey,
-          apiSecret,
-          cloudName: parsedCreds.cloudName
-        };
-      }
-    }
-  }
-  
-  return { apiKey, apiSecret, cloudName };
 }
 
 /**
@@ -106,8 +47,8 @@ export async function POST(req: NextRequest) {
     // Create a timestamp for the signature
     const timestamp = Math.round(new Date().getTime() / 1000);
 
-    // Get Cloudinary credentials
-    const { apiKey, apiSecret, cloudName } = getCloudinaryCredentials();
+    // Get Cloudinary configuration
+    const { cloud_name: cloudName, api_key: apiKey, api_secret: apiSecret } = cloudinary.config();
 
     // Ensure we have the required API credentials
     if (!apiSecret || !apiKey) {
@@ -119,7 +60,7 @@ export async function POST(req: NextRequest) {
     }
 
     console.log("Using Cloudinary credentials:", { 
-      cloudName, 
+      cloudName,
       apiKey: apiKey.substring(0, 5) + '...',
       secretAvailable: !!apiSecret
     });
