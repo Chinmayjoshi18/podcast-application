@@ -41,13 +41,13 @@ export default function Sidebar() {
   const bottomItems = [
     { name: 'Settings', href: '/settings', icon: FaCog },
   ];
-
+  
   return (
     <div className="h-screen flex flex-col py-4 px-3">
       {/* Logo */}
       <div className="px-3 mb-6">
         <Link href="/dashboard" className="flex items-center">
-          <div className="h-10 w-10 rounded-full bg-primary-500 flex items-center justify-center">
+          <div className="h-10 w-10 rounded-full bg-primary flex items-center justify-center">
             <FaMicrophone className="h-6 w-6 text-white" />
           </div>
         </Link>
@@ -76,7 +76,7 @@ export default function Sidebar() {
       <div className="px-3 mb-6">
         <Link
           href="/record"
-          className="flex items-center justify-center bg-primary-500 hover:bg-primary-600 transition-colors rounded-full py-3 px-6 w-full"
+          className="flex items-center justify-center bg-primary hover:bg-primary-600 transition-colors rounded-full py-3 px-6 w-full"
         >
           <FaPlus className="h-5 w-5 mr-2" />
           <span className="font-bold">Record</span>

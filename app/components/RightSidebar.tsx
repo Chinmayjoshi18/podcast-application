@@ -57,7 +57,7 @@ export default function RightSidebar() {
             <input
               type="text"
               placeholder="Search podcasts"
-              className="w-full bg-gray-800 border-none rounded-full py-3 pl-12 pr-4 text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="w-full bg-gray-800 border-none rounded-full py-3 pl-12 pr-4 text-white focus:outline-none focus:ring-2 focus:ring-primary"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -83,7 +83,7 @@ export default function RightSidebar() {
         </div>
         <Link 
           href="/topics" 
-          className="block px-4 py-3 text-primary-500 hover:bg-gray-700 transition-colors rounded-b-xl"
+          className="block px-4 py-3 text-primary hover:bg-gray-700 transition-colors rounded-b-xl"
         >
           Show more
         </Link>
@@ -121,7 +121,7 @@ export default function RightSidebar() {
         </div>
         <Link 
           href="/explore/people" 
-          className="block px-4 py-3 text-primary-500 hover:bg-gray-700 transition-colors rounded-b-xl"
+          className="block px-4 py-3 text-primary hover:bg-gray-700 transition-colors rounded-b-xl"
         >
           Show more
         </Link>
