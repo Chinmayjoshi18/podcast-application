@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useSession } from 'next-auth/react';
+import { useSupabase } from '@/app/providers/SupabaseProvider';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -94,7 +94,7 @@ const mockNotifications = [
 ];
 
 const NotificationsPage = () => {
-  const { data: session, status } = useSession();
+  const { user, isLoading: authLoading } = useSupabase();
   const router = useRouter();
   const [notifications, setNotifications] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -102,20 +102,20 @@ const NotificationsPage = () => {
   const [menuOpen, setMenuOpen] = useState<string | null>(null);
 
   useEffect(() => {
-    if (status === 'unauthenticated') {
+    if (!authLoading && !user) {
       router.push('/login');
     }
-  }, [status, router]);
+  }, [authLoading, user, router]);
 
   useEffect(() => {
     // In a real app, you would fetch notifications from the API
-    if (status === 'authenticated') {
+    if (user) {
       setTimeout(() => {
         setNotifications(mockNotifications);
         setIsLoading(false);
       }, 1000);
     }
-  }, [status]);
+  }, [user]);
 
   const handleMarkAsRead = (notificationId: string) => {
     setNotifications(prev => 
@@ -212,7 +212,7 @@ const NotificationsPage = () => {
     }
   };
 
-  if (status === 'loading' || isLoading) {
+  if (authLoading || isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="animate-pulse text-primary-600">Loading...</div>
