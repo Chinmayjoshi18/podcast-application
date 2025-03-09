@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useSession } from 'next-auth/react';
+import { useSupabase } from '@/app/providers/SupabaseProvider';
 import Link from 'next/link';
 import Image from 'next/image';
 import { FaUserPlus, FaUserCheck, FaPodcast, FaHeart, FaPlay, FaUsers } from 'react-icons/fa';
@@ -55,14 +55,14 @@ const mockPodcasts = [
   },
 ];
 
-// Client component props
+// Define ProfileClient component props
 interface ProfileClientProps {
   userId: string;
 }
 
 const ProfileClient = ({ userId }: ProfileClientProps) => {
-  const { data: session, status } = useSession();
-  const [user, setUser] = useState<any>(null);
+  const { user } = useSupabase();
+  const [profile, setProfile] = useState(null);
   const [podcasts, setPodcasts] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isFollowing, setIsFollowing] = useState(false);
@@ -73,30 +73,45 @@ const ProfileClient = ({ userId }: ProfileClientProps) => {
     totalListens: 0,
     totalLikes: 0,
   });
+  const [error, setError] = useState<string | null>(null);
 
-  // Fetch user data
   useEffect(() => {
-    // In a real app, you would fetch data from an API based on the user ID
-    setTimeout(() => {
-      setUser(mockUserData);
-      setPodcasts(mockPodcasts);
-      
-      // Calculate stats
-      const totalListens = mockPodcasts.reduce((sum, podcast) => sum + podcast.listens, 0);
-      const totalLikes = mockPodcasts.reduce((sum, podcast) => sum + podcast.likes, 0);
-      
-      setStats({
-        totalPodcasts: mockPodcasts.length,
-        totalListens,
-        totalLikes,
-      });
-      
-      setIsLoading(false);
-    }, 1000);
+    const fetchProfile = async () => {
+      setIsLoading(true);
+      try {
+        // Fetch user profile from API
+        const response = await fetch(`/api/users/${userId}`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch profile');
+        }
+        const data = await response.json();
+        setProfile(data);
+        setPodcasts(mockPodcasts);
+        
+        // Calculate stats
+        const totalListens = mockPodcasts.reduce((sum, podcast) => sum + podcast.listens, 0);
+        const totalLikes = mockPodcasts.reduce((sum, podcast) => sum + podcast.likes, 0);
+        
+        setStats({
+          totalPodcasts: mockPodcasts.length,
+          totalListens,
+          totalLikes,
+        });
+      } catch (error) {
+        console.error('Error fetching profile:', error);
+        setError('Failed to load profile');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    if (userId) {
+      fetchProfile();
+    }
   }, [userId]);
 
   const toggleFollow = () => {
-    if (!session) {
+    if (!user) {
       toast.error('Please log in to follow users');
       return;
     }
@@ -139,7 +154,7 @@ const ProfileClient = ({ userId }: ProfileClientProps) => {
     );
   }
 
-  if (!user) {
+  if (!profile) {
     return (
       <div className="container mx-auto px-4 py-12">
         <div className="text-center">
@@ -153,8 +168,8 @@ const ProfileClient = ({ userId }: ProfileClientProps) => {
     );
   }
 
-  // Proper type checking for user ID
-  const isOwnProfile = session?.user && (session.user as any).id === user.id;
+  // Check if this is the current user's profile
+  const isCurrentUserProfile = user && user.id === userId;
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -165,8 +180,8 @@ const ProfileClient = ({ userId }: ProfileClientProps) => {
             <div className="md:w-1/4 flex justify-center md:justify-start mb-6 md:mb-0">
               <div className="relative h-32 w-32 rounded-full overflow-hidden border-4 border-white dark:border-gray-700 shadow-lg">
                 <Image
-                  src={user.image}
-                  alt={user.name}
+                  src={profile.image}
+                  alt={profile.name}
                   layout="fill"
                   objectFit="cover"
                 />
@@ -175,13 +190,13 @@ const ProfileClient = ({ userId }: ProfileClientProps) => {
             <div className="md:w-3/4 md:pl-6">
               <div className="flex flex-col md:flex-row md:items-center md:justify-between">
                 <div>
-                  <h1 className="text-3xl font-bold mb-1">{user.name}</h1>
+                  <h1 className="text-3xl font-bold mb-1">{profile.name}</h1>
                   <p className="text-gray-600 dark:text-gray-400 mb-4">
-                    Joined {formatDate(user.createdAt)}
+                    Joined {formatDate(profile.createdAt)}
                   </p>
                 </div>
                 
-                {!isOwnProfile && (
+                {!isCurrentUserProfile && (
                   <button
                     onClick={toggleFollow}
                     className={`btn ${
@@ -202,7 +217,7 @@ const ProfileClient = ({ userId }: ProfileClientProps) => {
                   </button>
                 )}
                 
-                {isOwnProfile && (
+                {isCurrentUserProfile && (
                   <Link href="/settings/profile" className="btn btn-outline self-start">
                     Edit Profile
                   </Link>
@@ -210,7 +225,7 @@ const ProfileClient = ({ userId }: ProfileClientProps) => {
               </div>
               
               <p className="text-gray-700 dark:text-gray-300 mb-6">
-                {user.bio}
+                {profile.bio}
               </p>
               
               <div className="flex space-x-6">
@@ -224,14 +239,14 @@ const ProfileClient = ({ userId }: ProfileClientProps) => {
                 <div className="flex items-center">
                   <FaUsers className="mr-2 text-blue-600" />
                   <div>
-                    <div className="font-bold">{user.followers}</div>
+                    <div className="font-bold">{profile.followers}</div>
                     <div className="text-sm text-gray-600 dark:text-gray-400">Followers</div>
                   </div>
                 </div>
                 <div className="flex items-center">
                   <FaUsers className="mr-2 text-green-600" />
                   <div>
-                    <div className="font-bold">{user.following}</div>
+                    <div className="font-bold">{profile.following}</div>
                     <div className="text-sm text-gray-600 dark:text-gray-400">Following</div>
                   </div>
                 </div>
@@ -277,7 +292,7 @@ const ProfileClient = ({ userId }: ProfileClientProps) => {
         <div className="bg-white dark:bg-gray-800 shadow rounded-lg p-6">
           {activeTab === 'podcasts' && (
             <div>
-              <h2 className="text-xl font-semibold mb-6">Podcasts by {user.name}</h2>
+              <h2 className="text-xl font-semibold mb-6">Podcasts by {profile.name}</h2>
               
               {podcasts.length > 0 ? (
                 <div className="space-y-6">
@@ -326,11 +341,11 @@ const ProfileClient = ({ userId }: ProfileClientProps) => {
                   <FaPodcast className="mx-auto h-12 w-12 text-gray-400" />
                   <h3 className="mt-2 text-lg font-medium text-gray-900 dark:text-gray-100">No podcasts yet</h3>
                   <p className="mt-1 text-gray-500 dark:text-gray-400">
-                    {isOwnProfile
+                    {isCurrentUserProfile
                       ? 'Get started by creating your first podcast.'
-                      : `${user.name} hasn't published any podcasts yet.`}
+                      : `${profile.name} hasn't published any podcasts yet.`}
                   </p>
-                  {isOwnProfile && (
+                  {isCurrentUserProfile && (
                     <div className="mt-6">
                       <Link href="/record" className="btn btn-primary">
                         Create Podcast
@@ -344,13 +359,13 @@ const ProfileClient = ({ userId }: ProfileClientProps) => {
           
           {activeTab === 'about' && (
             <div>
-              <h2 className="text-xl font-semibold mb-6">About {user.name}</h2>
+              <h2 className="text-xl font-semibold mb-6">About {profile.name}</h2>
               
               <div className="space-y-6">
                 <div>
                   <h3 className="text-lg font-medium mb-2">Bio</h3>
                   <p className="text-gray-700 dark:text-gray-300">
-                    {user.bio || 'No bio provided.'}
+                    {profile.bio || 'No bio provided.'}
                   </p>
                 </div>
                 
@@ -366,13 +381,13 @@ const ProfileClient = ({ userId }: ProfileClientProps) => {
                       <div className="text-gray-600 dark:text-gray-400">Total listens</div>
                     </div>
                     <div className="bg-gray-50 dark:bg-gray-900 p-4 rounded-lg">
-                      <div className="text-2xl font-bold">{formatDate(user.createdAt)}</div>
+                      <div className="text-2xl font-bold">{formatDate(profile.createdAt)}</div>
                       <div className="text-gray-600 dark:text-gray-400">Joined</div>
                     </div>
                   </div>
                 </div>
                 
-                {isOwnProfile && (
+                {isCurrentUserProfile && (
                   <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
                     <Link href="/settings/profile" className="btn btn-primary">
                       Edit Profile

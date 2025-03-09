@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { FaRegComment, FaTimes, FaPaperPlane } from 'react-icons/fa';
 import toast from 'react-hot-toast';
-import { useSession } from 'next-auth/react';
+import { useSupabase } from '@/app/providers/SupabaseProvider';
 import Image from 'next/image';
 
 interface CommentModalProps {
@@ -13,32 +13,48 @@ interface CommentModalProps {
 }
 
 const CommentModal = ({ podcastId, isOpen, onClose }: CommentModalProps) => {
-  const { data: session } = useSession();
+  const { user } = useSupabase();
   const [comment, setComment] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!session) {
-      toast.error('Please sign in to comment');
+    if (!user) {
+      // Handle not logged in
       return;
     }
     
-    if (!comment.trim()) {
-      toast.error('Comment cannot be empty');
-      return;
+    setIsSubmitting(true);
+    
+    try {
+      // API call to submit comment
+      const response = await fetch('/api/comments', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          podcastId,
+          text: comment,
+          userId: user.id,
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to submit comment');
+      }
+      
+      // Success
+      setComment('');
+      onClose();
+    } catch (error) {
+      console.error('Error submitting comment:', error);
+      // Handle error
+    } finally {
+      setIsSubmitting(false);
     }
-    
-    // In a real app, this would save to a database
-    // For now, we'll just show a success message
-    toast.success('Comment added!');
-    setComment('');
-    
-    // In a real implementation, you would save the comment and then:
-    // 1. Update a comments state in the parent component
-    // 2. Optionally close the modal after successful comment
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -76,8 +92,8 @@ const CommentModal = ({ podcastId, isOpen, onClose }: CommentModalProps) => {
             <div className="flex-shrink-0">
               <div className="w-10 h-10 rounded-full overflow-hidden relative">
                 <Image
-                  src={session?.user?.image || `https://placehold.co/100x100`}
-                  alt={session?.user?.name || 'User'}
+                  src={user?.user_metadata.avatar_url || `https://placehold.co/100x100`}
+                  alt={user?.user_metadata.user_name || 'User'}
                   width={40}
                   height={40}
                   className="object-cover"
@@ -103,7 +119,7 @@ const CommentModal = ({ podcastId, isOpen, onClose }: CommentModalProps) => {
                 <button 
                   type="submit"
                   className="bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-full flex items-center space-x-1 disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={!comment.trim()}
+                  disabled={!comment.trim() || isSubmitting}
                 >
                   <FaPaperPlane size={14} />
                   <span>Comment</span>

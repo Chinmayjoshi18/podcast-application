@@ -1,132 +1,109 @@
 'use client';
 
-import { useState } from 'react';
+import Link from 'next/link';
 import Image from 'next/image';
-import { useRouter } from 'next/navigation';
-import { FaUserPlus, FaUserCheck, FaEnvelope } from 'react-icons/fa';
-import { useSession } from 'next-auth/react';
-import toast from 'react-hot-toast';
+import { FaCalendarAlt, FaMapMarkerAlt, FaLink, FaCog } from 'react-icons/fa';
+import { useSupabase } from '@/app/providers/SupabaseProvider';
 
+// Define the props interface
 interface UserProfileCardProps {
-  user: {
-    id: string;
-    name: string;
-    image: string;
-    isFollowing?: boolean;
-  };
-  hideFollowButton?: boolean;
+  userId?: string;
+  name?: string;
+  username?: string;
+  bio?: string;
+  followers?: number;
+  following?: number;
+  profileImage?: string;
+  isFollowing?: boolean;
+  isCurrentUser?: boolean;
+  onFollowToggle?: () => void;
 }
 
-export default function UserProfileCard({ user, hideFollowButton = false }: UserProfileCardProps) {
-  const { data: session } = useSession();
-  const [isFollowing, setIsFollowing] = useState(user.isFollowing || false);
-  const [isLoading, setIsLoading] = useState(false);
-  const router = useRouter();
+export default function UserProfileCard({
+  userId,
+  name,
+  username,
+  bio,
+  followers = 0,
+  following = 0,
+  profileImage,
+  isFollowing = false,
+  isCurrentUser,
+  onFollowToggle
+}: UserProfileCardProps) {
+  const { user } = useSupabase();
   
-  const isCurrentUser = session?.user?.id === user.id;
-
-  const handleFollowToggle = async () => {
-    if (!session?.user) {
-      toast.error('You must be logged in to follow users');
-      return;
-    }
-    
-    setIsLoading(true);
-    try {
-      const endpoint = isFollowing ? '/api/follow/unfollow' : '/api/follow';
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ targetUserId: user.id }),
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to update follow status');
-      }
-      
-      setIsFollowing(!isFollowing);
-      toast.success(isFollowing ? 'Unfollowed successfully' : 'Followed successfully');
-    } catch (error) {
-      console.error('Follow toggle error:', error);
-      toast.error('Failed to update follow status');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleMessage = async () => {
-    if (!session?.user) {
-      toast.error('You must be logged in to send messages');
-      return;
-    }
-    
-    if (isCurrentUser) {
-      router.push('/messages');
-      return;
-    }
-    
-    try {
-      // Start a new conversation or navigate to existing one
-      const response = await fetch('/api/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          recipientId: user.id,
-          content: 'Hello! I wanted to connect with you.'
-        }),
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to start conversation');
-      }
-      
-      const data = await response.json();
-      router.push(`/messages?conversation=${data.id}`);
-    } catch (error) {
-      console.error('Start conversation error:', error);
-      toast.error('Failed to start conversation');
-    }
-  };
+  // If no user ID is provided, use the current user's profile
+  const isOwnProfile = isCurrentUser || (!userId && user);
+  
+  // If no props are provided but we have a current user, use their data
+  const displayName = name || user?.user_metadata?.full_name || 'User';
+  const displayUsername = username || user?.user_metadata?.username || 'user';
+  const displayBio = bio || user?.user_metadata?.bio || 'No bio provided';
+  const displayImage = profileImage || user?.user_metadata?.avatar_url || 'https://placehold.co/400/5f33e1/ffffff?text=U';
 
   return (
-    <div className="flex items-center space-x-4 p-4 rounded-lg bg-gray-800 hover:bg-gray-700 transition-colors">
-      <div className="relative h-12 w-12">
-        <Image
-          src={user.image || 'https://placehold.co/100/5f33e1/ffffff?text=U'}
-          alt={user.name}
-          fill
-          className="rounded-full object-cover"
-        />
-      </div>
-      <div className="flex-1">
-        <h3 className="font-semibold">{user.name}</h3>
-      </div>
-      <div className="flex space-x-2">
-        {!hideFollowButton && !isCurrentUser && (
-          <button
-            onClick={handleFollowToggle}
-            disabled={isLoading}
-            className={`p-2 rounded-full text-white ${
-              isFollowing 
-                ? 'bg-gray-700 hover:bg-gray-600' 
-                : 'bg-primary-600 hover:bg-primary-700'
-            } transition-colors`}
-            aria-label={isFollowing ? 'Unfollow' : 'Follow'}
-          >
-            {isFollowing ? <FaUserCheck /> : <FaUserPlus />}
-          </button>
-        )}
-        <button
-          onClick={handleMessage}
-          className="p-2 rounded-full text-white bg-blue-600 hover:bg-blue-700 transition-colors"
-          aria-label="Message"
-        >
-          <FaEnvelope />
-        </button>
+    <div className="bg-gray-800 rounded-lg overflow-hidden shadow-md">
+      {/* Cover photo */}
+      <div className="h-32 bg-gradient-to-r from-primary-600 to-primary-800"></div>
+      
+      {/* Profile info */}
+      <div className="px-4 py-3 relative">
+        {/* Profile picture */}
+        <div className="absolute -top-16 left-4 rounded-full border-4 border-gray-800 overflow-hidden">
+          <Image
+            src={displayImage}
+            alt={displayName}
+            width={80}
+            height={80}
+            className="h-20 w-20 object-cover"
+          />
+        </div>
+        
+        {/* Follow button or edit profile button */}
+        <div className="flex justify-end">
+          {isOwnProfile ? (
+            <Link 
+              href="/settings/profile" 
+              className="px-4 py-2 rounded-full border border-gray-600 text-sm font-medium hover:bg-gray-700 transition-colors"
+            >
+              <FaCog className="inline mr-2" />
+              Edit Profile
+            </Link>
+          ) : (
+            <button 
+              onClick={onFollowToggle}
+              className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                isFollowing 
+                  ? 'bg-white text-black hover:bg-gray-200' 
+                  : 'bg-primary-600 text-white hover:bg-primary-700'
+              }`}
+            >
+              {isFollowing ? 'Following' : 'Follow'}
+            </button>
+          )}
+        </div>
+        
+        {/* Name and username */}
+        <div className="mt-10">
+          <h2 className="text-xl font-bold">{displayName}</h2>
+          <p className="text-gray-400">@{displayUsername}</p>
+        </div>
+        
+        {/* Bio */}
+        <p className="mt-2 text-sm">{displayBio}</p>
+        
+        {/* Stats */}
+        <div className="flex mt-4 text-sm">
+          <div className="mr-4">
+            <span className="font-bold">{following}</span>
+            <span className="text-gray-400 ml-1">Following</span>
+          </div>
+          <div>
+            <span className="font-bold">{followers}</span>
+            <span className="text-gray-400 ml-1">Followers</span>
+          </div>
+        </div>
       </div>
     </div>
   );

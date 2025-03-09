@@ -2,15 +2,22 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { useSupabase } from '@/app/providers/SupabaseProvider';
+import { FaSearch, FaBell, FaEnvelope, FaUser } from 'react-icons/fa';
 import Image from 'next/image';
-import { useSession } from 'next-auth/react';
-import { FaHome, FaSearch, FaBell, FaEnvelope } from 'react-icons/fa';
 import MessageNotificationBadge from './MessageNotificationBadge';
 
-export default function Header() {
-  const { data: session } = useSession();
+const Header = () => {
+  const { user } = useSupabase();
+  const [searchQuery, setSearchQuery] = useState('');
   const [notificationCount, setNotificationCount] = useState(0);
-  
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    // Handle search logic here
+    console.log('Search for:', searchQuery);
+  };
+
   return (
     <header className="sticky top-0 z-20 bg-gray-900 border-b border-gray-800">
       <div className="container mx-auto px-4 py-3 flex justify-between items-center">
@@ -22,13 +29,13 @@ export default function Header() {
         
         {/* User menu or login button */}
         <div>
-          {session ? (
+          {user ? (
             <div className="flex items-center">
               <Link href="/profile" className="flex items-center">
                 <div className="w-8 h-8 relative rounded-full overflow-hidden">
                   <Image 
-                    src={session.user?.image || "https://placehold.co/100/5f33e1/ffffff?text=U"} 
-                    alt="Profile" 
+                    src={user.user_metadata?.avatar_url || "/default-avatar.png"} 
+                    alt={user.user_metadata?.full_name || "User"}
                     fill
                     className="object-cover"
                   />
@@ -76,4 +83,6 @@ export default function Header() {
       </div>
     </header>
   );
-} 
+};
+
+export default Header; 

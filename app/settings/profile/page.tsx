@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useSession } from 'next-auth/react';
+import { useSupabase } from '@/app/providers/SupabaseProvider';
 import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 import { FaCamera, FaCheck, FaSave } from 'react-icons/fa';
 import toast from 'react-hot-toast';
+import { supabase } from '@/lib/supabaseClient';
 
 // Mock user data
 const mockUserData = {
@@ -17,42 +18,38 @@ const mockUserData = {
 };
 
 const ProfileSettings = () => {
-  const { data: session, status, update } = useSession();
   const router = useRouter();
-  const [isLoading, setIsLoading] = useState(true);
+  const { user, refreshSession, isLoading: authLoading } = useSupabase();
+  const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [profileData, setProfileData] = useState({
     name: '',
+    username: '',
     email: '',
     bio: '',
-    image: '',
+    website: '',
+    profilePicture: '',
   });
   const [newImage, setNewImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
 
   useEffect(() => {
-    if (status === 'unauthenticated') {
+    if (!authLoading && !user) {
       router.push('/login');
+      return;
     }
-  }, [status, router]);
 
-  useEffect(() => {
-    // In a real app, you would fetch user data from the API
-    if (status === 'authenticated') {
-      setTimeout(() => {
-        const userData = {
-          ...mockUserData,
-          // Override with session data if available
-          name: session?.user?.name || mockUserData.name,
-          email: session?.user?.email || mockUserData.email,
-          image: session?.user?.image || mockUserData.image,
-        };
-        
-        setProfileData(userData);
-        setIsLoading(false);
-      }, 1000);
+    if (user) {
+      setProfileData({
+        name: user.user_metadata?.full_name || '',
+        username: user.user_metadata?.username || '',
+        email: user.email || '',
+        bio: user.user_metadata?.bio || '',
+        website: user.user_metadata?.website || '',
+        profilePicture: user.user_metadata?.avatar_url || '',
+      });
     }
-  }, [status, session]);
+  }, [user, authLoading, router]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -78,30 +75,34 @@ const ProfileSettings = () => {
     setIsSaving(true);
 
     try {
-      // In a real app, you would send the updated data to the API
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Update user profile in Supabase
+      const { error } = await supabase.auth.updateUser({
+        data: {
+          full_name: profileData.name,
+          username: profileData.username,
+          bio: profileData.bio,
+          website: profileData.website,
+          avatar_url: profileData.profilePicture,
+        }
+      });
 
-      // Simulate updating the session
-      if (session) {
-        await update({
-          ...session,
-          user: {
-            ...session.user,
-            name: profileData.name,
-          },
-        });
+      if (error) {
+        throw error;
       }
 
+      // Refresh the session to update the UI
+      await refreshSession();
+      
       toast.success('Profile updated successfully');
     } catch (error) {
       console.error('Error updating profile:', error);
-      toast.error('Failed to update profile');
+      toast.error('Failed to update profile. Please try again.');
     } finally {
       setIsSaving(false);
     }
   };
 
-  if (isLoading) {
+  if (authLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="animate-pulse text-primary-600">Loading...</div>
@@ -122,7 +123,7 @@ const ProfileSettings = () => {
                 <div className="relative w-32 h-32 mb-4">
                   <div className="w-full h-full rounded-full overflow-hidden">
                     <Image
-                      src={imagePreview || profileData.image}
+                      src={imagePreview || profileData.profilePicture}
                       alt={profileData.name}
                       layout="fill"
                       objectFit="cover"
